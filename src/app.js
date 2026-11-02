@@ -148,7 +148,7 @@ function setLang(l,quiet){st.lang=l;SV('lang',l);document.documentElement.datase
 $$('button[data-lang]').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
 // 标签页
 function moveInd(){const b=$('.tabs button.on'),ind=$('.ind');if(!b)return;ind.style.width=b.offsetWidth+'px';ind.style.transform=`translateX(${b.offsetLeft}px)`}
-async function setTab(t,openId){$('#porNote').hidden=t!='portrait';$('#addFace').hidden=t!='portrait';if(t=='studio'){st.tab=t;$('#addFace').hidden=true;$$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();document.title='试穿 · 衣姿 PoseWear';history.replaceState(null,'','#studio');document.body.classList.add('studio');$('#studio').hidden=false;$('#tray').hidden=true;scrollTo({top:0});window.WB&&WB.show();return}
+async function setTab(t,openId){$('#porNote').hidden=t!='portrait';$('#addFace').hidden=$('#faceExp').hidden=$('#faceImp').hidden=t!='portrait';if(t=='studio'){st.tab=t;$('#addFace').hidden=$('#faceExp').hidden=$('#faceImp').hidden=true;$$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();document.title='试穿 · 衣姿 PoseWear';history.replaceState(null,'','#studio');document.body.classList.add('studio');$('#studio').hidden=false;$('#tray').hidden=true;scrollTo({top:0});window.WB&&WB.show();return}
  if(document.body.classList.contains('studio')){document.body.classList.remove('studio');$('#studio').hidden=true;tray()}
  const changed=st.tab!=t;st.tab=t;if(changed)grid.classList.add('gbusy');st.f={};st.q='';$('#q').value='';$('#qx').hidden=true;
  $$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();
@@ -173,6 +173,21 @@ $('#exp').onclick=()=>{if(!st.fav.size)return toast('还没有收藏可导出');
 $('#imp').onclick=()=>$('#impF').click();$('#impF').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());const ks=(j.收藏||[]).map(x=>x.key).filter(k=>/^[pcr]:/.test(k));await needKeys(ks);let n=0;ks.forEach(k=>{if(ITEMS[k]&&!st.fav.has(k)){st.fav.add(k);n++}});SV('fav',[...st.fav]);counts();setTab('fav');toast('已导入 '+n+' 条收藏')}catch(err){toast('导入失败：文件格式不正确')}e.target.value=''};
 $('#clrRec').onclick=()=>{if(!st.rec.length)return;const old=st.rec.slice();st.rec=[];SV('rec',[]);counts();viewT(apply);toast(`已清空 ${old.length} 条记录`,()=>{st.rec=old;SV('rec',old);counts();viewT(apply)})};
 $('#addFace').onclick=()=>$('#faceF').click();$('#faceF').onchange=e=>{addFaceFiles(e.target.files);e.target.value=''};
+// 面孔包导出 / 导入（图片 + 名称 + 中英描述，跨设备迁移）
+$('#faceExp').onclick=async()=>{if(!FACES.length)return toast('还没有自定义面孔可导出');
+ const faces=[];for(const rec of FACES){const img=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(rec.blob)});faces.push({name:rec.name,zh:rec.zh,en:rec.en,w:rec.w,h:rec.h,img})}
+ const b=new Blob([JSON.stringify({app:'衣姿 PoseWear',type:'face-pack',exported:new Date().toLocaleString('zh-CN'),count:faces.length,faces},null,1)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='衣姿-面孔包-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);toast(`已导出 ${faces.length} 个面孔`)};
+$('#faceImp').onclick=()=>$('#faceImpF').click();
+$('#faceImpF').onchange=async e=>{const f=e.target.files[0];e.target.value='';try{
+ const j=JSON.parse(await f.text());if(j.type!='face-pack'||!Array.isArray(j.faces))throw 0;
+ let n=0;for(const x of j.faces){const blob=await (await fetch(x.img)).blob();
+  faceN++;SV('faceN',faceN);
+  const rec={id:'u'+Date.now().toString(36)+faceN,name:x.name||('我的面孔 '+faceN),zh:x.zh||'',en:x.en||'',blob,w:x.w||1080,h:x.h||1350};
+  await ftx('readwrite',s=>s.put(rec));FACES.push(rec);
+  if(DATA.portrait){const it=faceItem(rec);ITEMS[it.k]=it;DATA.portrait.unshift(it)}n++}
+ if(n){counts();if(st.tab=='portrait')viewT(apply);toast(`已导入 ${n} 个面孔`)}else toast('面孔包为空');
+ }catch(err){toast('导入失败：文件格式不正确')}};
 // 裁切器交互
 $('#fcCover').onclick=()=>{fcMode='cover';$('#fcZoom').value=1;fcOX=0;fcOY=0;fcDraw()};
 $('#fcContain').onclick=()=>{fcMode='contain';$('#fcZoom').value=1;fcOX=0;fcOY=0;fcDraw()};
