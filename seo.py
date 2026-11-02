@@ -214,7 +214,7 @@ idx=re.sub(r'<meta name="description" content="[^"]*">',f'<meta name="descriptio
 idx=re.sub(r'<meta property="og:title" content="[^"]*">','<meta property="og:title" content="衣姿 PoseWear：姿势、服装、人像参考图库">',idx,1)
 idx=re.sub(r'<meta property="og:description" content="[^"]*">',f'<meta property="og:description" content="{E(zh_desc)}">',idx,1)
 idx=idx.replace('<meta name="twitter:card" content="summary_large_image">',f'<meta name="twitter:card" content="summary_large_image"><meta name="twitter:description" content="{E(zh_desc)}">',1)
-idx=idx.replace('<link rel="canonical" href="https://posewear.pages.dev/">',alts('/'))
+idx=idx.replace('<link rel="canonical" href="https://posewear.pages.dev/">','<link rel="canonical" href="'+url('zh','/')+'">'+alts('/'))
 LD=[{"@type":"WebSite","@id":SITE+'/#website',"url":SITE+'/',"name":"衣姿 PoseWear","alternateName":["PoseWear","衣姿"],"inLanguage":"zh-CN","description":zh_desc,
   "potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":SITE+'/?t=costume&q={search_term_string}'},"query-input":"required name=search_term_string"}},
  {"@type":"WebApplication","name":"衣姿 PoseWear","url":SITE+'/',"applicationCategory":"DesignApplication","operatingSystem":"Any (web browser)","browserRequirements":"Requires JavaScript","inLanguage":["zh-CN","en"],
