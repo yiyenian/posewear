@@ -503,3 +503,20 @@ button:active:not(:disabled){transform:scale(.97)}.tabs button:active,.chip:acti
 
 .ssr .ssl{display:block;height:100%}.ssr .ph{cursor:pointer}.ssr h3 a{color:inherit;text-decoration:none}
 .seoc{max-width:var(--w);margin:0 auto;padding:28px 24px 8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;border-top:1px solid var(--line);font-size:13px}.seoc h4{margin:0 0 8px;font-size:13px;color:var(--mu);font-weight:600}.seoc a{display:inline-block;margin:0 12px 6px 0;color:inherit;text-decoration:none}.seoc a:hover{text-decoration:underline}
+
+/* 面孔裁切 */
+#helpBox,#pk,#cfg,#fc{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:20px;animation:fade .2s both}
+#helpBox[hidden],#pk[hidden],#cfg[hidden],#fc[hidden]{display:none!important}
+#fc .cfg-box{width:min(460px,100%)}
+.fc-vp{display:grid;place-items:center;background:#141414;border-radius:14px;overflow:hidden}
+#fcCv{width:min(320px,72vw);height:auto;cursor:grab;touch-action:none;display:block}
+#fcCv:active{cursor:grabbing}
+#fc input[type=range]{width:100%;margin:12px 0 8px}
+#fc .row{margin-top:4px}
+.fc-l{display:flex;align-items:center;gap:8px;margin:6px 0}
+.fc-l small{width:30px;flex:none;color:#888;font-size:12px}
+.fc-l .chips{flex-wrap:wrap}
+/* 裁切弹窗：防止画布被网格布局压缩 */
+#fc .cfg-b{display:block;overflow-y:auto;max-height:calc(94vh - 130px)}
+#fc .fc-vp{height:auto;padding:10px 0}
+#fcCv{margin:0 auto}

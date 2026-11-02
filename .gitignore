@@ -18,3 +18,5 @@ tests/screenshots/
 indexnow.key
 urls.txt
 .indexnow-state.json
+.vercel
+.env*.local

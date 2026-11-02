@@ -2,7 +2,7 @@
 import datetime,time
 TODAY=datetime.date.today().isoformat()
 MT=lambda p:datetime.date.fromtimestamp(os.path.getmtime(p)).isoformat()
-LM={'pose':MT(f'{R}/pose/data.json'),'costume':MT(f'{R}/costume/data.json'),'portrait':MT(f'{R}/portrait/data.json')}
+LM={'pose':MT(f'{R}/pose/data.json'),'costume':MT(f'{R}/costume/data.json'),'portrait':MT(f'{R}/portrait/data.json' if os.path.exists(f'{R}/portrait/data.json') else f'{R}/portrait/images.js')}
 for d in ['en','tag']:
   if os.path.exists(f'{D}/{d}'): shutil.rmtree(f'{D}/{d}')
 if not os.path.exists('indexnow.key'):

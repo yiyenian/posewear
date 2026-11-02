@@ -76,7 +76,7 @@ open(f'{D}/404.html','w').write(f'''<!doctype html><html lang="zh-CN"><head><met
 .nf{{max-width:480px;margin:12vh auto;text-align:center;padding:0 20px}}.nf b{{font-size:64px;color:#d81b3a;display:block;line-height:1}}</style></head><body><header><a href="/">{LOGO}衣姿 PoseWear</a></header>
 <div class="nf"><b>404</b><h1>这个页面不存在</h1><p class="mu">链接可能写错了，或者内容已经调整。</p><a class="go" href="/">回到首页</a><a class="go" style="background:#111" href="/#costume">看看服装库</a></div></body></html>''')
 CSP=("default-src 'self'; script-src 'self' "+SH+"; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; "
- "connect-src 'self' data: blob: https://api.openai.com https://generativelanguage.googleapis.com https://*.volces.com https://*.bytepluses.com https://oaidalleapiprodscus.blob.core.windows.net https://*.googleusercontent.com; "
+ "connect-src 'self' data: blob: https://api.openai.com https://generativelanguage.googleapis.com https://*.volces.com https://*.bytepluses.com https://oaidalleapiprodscus.blob.core.windows.net https://*.googleusercontent.com http://localhost:* http://127.0.0.1:*; "
  "worker-src 'self'; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests")
 IMM='  Cache-Control: public, max-age=31536000, immutable\n'
 open(f'{D}/_headers','w').write(f'''/*
@@ -109,4 +109,25 @@ open(f'{D}/_headers','w').write(f'''/*
 /portrait/*
   Cache-Control: public, max-age=600
 ''')
+# ---------- Vercel 响应头（vercel.json，部署到 Vercel 时生效；Cloudflare 会忽略此文件）----------
+SEC=[('Content-Security-Policy',CSP),('X-Content-Type-Options','nosniff'),('Referrer-Policy','strict-origin-when-cross-origin'),
+ ('X-Frame-Options','DENY'),('Strict-Transport-Security','max-age=31536000; includeSubDomains'),
+ ('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()'),
+ ('Cross-Origin-Opener-Policy','same-origin')]
+VH=[{'source':'/(.*)','headers':[{'key':k,'value':v} for k,v in SEC]},
+ {'source':'/(assets|p|c|r|o)/(.*)','headers':[{'key':'Cache-Control','value':'public, max-age=31536000, immutable'}]},
+ {'source':'/icon-(.*)','headers':[{'key':'Cache-Control','value':'public, max-age=31536000, immutable'}]},
+ {'source':'/og.png','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/robots.txt','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap_index.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap-pose.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap-costume.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap-portrait.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sitemap-pages.xml','headers':[{'key':'Cache-Control','value':'public, max-age=3600'}]},
+ {'source':'/sw.js','headers':[{'key':'Cache-Control','value':'no-cache'}]},
+ {'source':'/','headers':[{'key':'Cache-Control','value':'public, max-age=0, must-revalidate'}]},
+ {'source':'/index.html','headers':[{'key':'Cache-Control','value':'public, max-age=0, must-revalidate'}]},
+ {'source':'/(pose|costume|portrait|en|tag)/(.*)','headers':[{'key':'Cache-Control','value':'public, max-age=600'}]}]
+open(f'{D}/vercel.json','w').write(json.dumps({'headers':VH},ensure_ascii=False,indent=1))
 exec(open('seo.py').read())

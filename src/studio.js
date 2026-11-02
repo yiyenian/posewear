@@ -5,8 +5,9 @@ const LS=k=>{try{return JSON.parse(localStorage[k]||'null')}catch(e){return null
 const PROV={openai:{name:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-image-1',models:['gpt-image-1','gpt-image-1-mini','gpt-image-2','dall-e-2']},
  gemini:{name:'Gemini',base:'https://generativelanguage.googleapis.com/v1beta',model:'gemini-2.5-flash-image',models:['gemini-2.5-flash-image','gemini-3-pro-image-preview','gemini-3.1-flash-image']},
  seedream:{name:'豆包 Seedream',base:'https://ark.cn-beijing.volces.com/api/v3',model:'doubao-seedream-4-0-250828',models:['doubao-seedream-4-0-250828','doubao-seedream-4-5-251128','doubao-seedream-5-0-flash-260915']},
- custom:{name:'自定义中转',base:'',model:'gpt-image-1',models:['gpt-image-1','gpt-image-2','gemini-2.5-flash-image','flux-kontext-pro','qwen-image-edit','doubao-seedream-4-0-250828']}};
-const cfg=Object.assign({prov:'openai',base:'',key:'',model:'',field:'image[]',proto:'edits',proxy:false},LS('wbCfg')||{});
+ custom:{name:'自定义中转',base:'',model:'gpt-image-1',models:['gpt-image-1','gpt-image-2','gemini-2.5-flash-image','flux-kontext-pro','qwen-image-edit','doubao-seedream-4-0-250828']},
+ comfyui:{name:'本地 ComfyUI',base:'http://127.0.0.1:8188',model:'',models:[]}};
+const cfg=Object.assign({prov:'openai',base:'',key:'',model:'',field:'image[]',proto:'edits',proxy:false,wf:'',np:'',ng:'',ns:'',nt:'',nw:'',nsz:''},LS('wbCfg')||{});
 // ---------- 预设 ----------
 const CHARS=[['asia','东亚女性','an adult East Asian woman in her mid-20s, long black hair, natural makeup, slim build','一位二十多岁的成年东亚女性，黑色长发，自然淡妆，身材纤细'],
  ['west','欧美女性','an adult Caucasian woman in her late 20s, wavy light-brown hair, natural makeup, athletic build','一位二十多岁的成年欧美女性，浅棕色波浪长发，自然妆容，匀称身材'],
@@ -16,13 +17,15 @@ const CHARS=[['asia','东亚女性','an adult East Asian woman in her mid-20s, l
 const STYLES=[['keep','照片质感','photorealistic, matching the original photo quality','写实摄影质感，与原照片画质一致'],['studio','影棚大片','clean high-end fashion studio, soft key light, seamless light-grey backdrop, editorial lookbook photo','高端时尚影棚，柔和主光，浅灰无缝背景，杂志画册质感'],
  ['street','城市街拍','candid city street-style photo, natural daylight, shallow depth of field','城市街拍抓拍，自然日光，浅景深'],['ecom','电商白底','e-commerce product-model photo, pure white background, even lighting, full body','电商模特图，纯白背景，均匀布光，全身构图'],
  ['film','胶片氛围','35mm film photograph, warm tones, subtle grain, golden hour light','35mm 胶片摄影，暖色调，轻微颗粒，黄金时刻光线'],['anime','动漫插画','high-quality anime illustration, clean line art, soft cel shading','高质量动漫插画，干净线稿，柔和赛璐璐上色']];
+// 身高体型（无照片生图模式用，选中后写入人物描述）
+const BODY=[['纤细','slim slender figure'],['标准','average build'],['匀称','well-proportioned athletic figure'],['丰满','curvy full figure'],['高挑','tall, long-legged figure'],['娇小','petite small frame'],['微胖','slightly plump figure']];
 const ANG_EN={'正面':'front view','斜侧':'three-quarter view','侧面':'side profile','俯拍':'high-angle shot looking down','仰拍':'low-angle shot looking up','背面':'back view','下から':'low angle'};
-const W={mode:LS('wbMode')||'tryon',persons:[],garments:[],poses:[],char:LS('wbChar')||'asia',charTxt:LS('wbCharTxt')||'',style:LS('wbStyle')||'keep',bm:LS('wbBm')||'each',pl:LS('wbPl')||'en',keepBg:LS('wbKeepBg')??true,busy:null,dirty:false,results:[],ri:0,cmp:true};
+const W={mode:LS('wbMode')||'tryon',persons:[],garments:[],poses:[],char:LS('wbChar')||'asia',charTxt:LS('wbCharTxt')||'',body:LS('wbBody')||'',style:LS('wbStyle')||'keep',bm:LS('wbBm')||'each',pl:LS('wbPl')||'en',keepBg:LS('wbKeepBg')??true,busy:null,dirty:false,results:[],ri:0,cmp:true};
 // item: {kind:'lib',k,ai?} | {kind:'file',blob,url,name}
 const g0=LS('wbSel')||{};
 // ---------- 工具 ----------
 const normBase=b=>(b||'').trim().replace(/\/+$/,'');
-function root(){let b=normBase(cfg.base)||PROV[cfg.prov].base;if(cfg.prov=='gemini')return/\/v1(beta|alpha)?$/.test(b)?b:b+'/v1beta';if(cfg.prov=='seedream')return b;return/\/v\d+$/.test(b)?b:b+'/v1'}
+function root(){let b=normBase(cfg.base)||PROV[cfg.prov].base;if(cfg.prov=='comfyui')return b;if(cfg.prov=='gemini')return/\/v1(beta|alpha)?$/.test(b)?b:b+'/v1beta';if(cfg.prov=='seedream')return b;return/\/v\d+$/.test(b)?b:b+'/v1'}
 const modelOf=()=>(cfg.model||'').trim()||PROV[cfg.prov].model;
 const proto=()=>cfg.prov=='openai'?'edits':cfg.prov=='custom'?cfg.proto:cfg.prov;
 function loadImg(src){return new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>j(Error('图片读取失败'));i.src=src})}
@@ -35,18 +38,18 @@ const dataURL=async b=>'data:'+(b.type||'image/jpeg')+';base64,'+await b64(b);
 const isGen=()=>W.mode=='gen';const hasPerson=()=>W.persons.length>0;
 // ---------- 提示词 ----------
 function poseDesc(p,en){const it=A.ITEMS[p.k];if(!it)return'';const a=it.angles[p.ai??it.ai];return en?`${it.en} (${it.lineEn}, ${ANG_EN[a.zh]||a.en||a.zh})${/2人|双人/.test(it.line)?' — a two-person pose: match the number of people and their relative positions':''}`:`${it.zh}（${it.line}，${a.zh}）${/2人|双人/.test(it.line)?'——双人姿势，人数与相对位置需与线稿一致':''}`}
-function compose(poseSet){const en=W.pl=='en',P=W.persons.length,G=W.garments.length,ps=poseSet||W.poses,np=ps.length,sheet=np>1;const style=STYLES.find(s=>s[0]==W.style)||STYLES[0],ch=CHARS.find(c=>c[0]==W.char)||CHARS[0],ex=$('#wbExtra').value.trim();
+function compose(poseSet){const en=W.pl=='en',P=W.persons.length,G=W.garments.length,ps=poseSet||W.poses,np=ps.length,sheet=np>1;const style=STYLES.find(s=>s[0]==W.style)||STYLES[0],ch=CHARS.find(c=>c[0]==W.char)||CHARS[0],ex=$('#wbExtra').value.trim(),bd=isGen()?BODY.find(b=>b[0]==W.body):null;
  const gi=W.garments.map(g=>g.kind=='lib'&&A.ITEMS[g.k]).filter(Boolean);let n=0;const rng=(c)=>{if(!c)return null;const a=n+1,b=n+c;n=b;return a==b?(en?`image ${a}`:`第 ${a} 张`):(en?`images ${a}–${b}`:`第 ${a}–${b} 张`)};
  const rP=rng(P),rG=rng(G),rS=rng(np);const L=[];
  if(en){L.push(P?`Fashion ${isGen()?'image generation':'virtual try-on'} using reference images. ${rP} ${P>1?'show':'shows'} the person (same individual)${G?`; ${rG} ${G>1?'show':'shows'} the outfit${G>1?' pieces (top and bottom)':''} on an invisible mannequin`:''}${np?`; ${rS} ${np>1?'are':'is'} pose sketch${np>1?'es':''}`:''}.`:`Fashion image generation from reference images. ${G?`${rG} ${G>1?'show':'shows'} the outfit on an invisible mannequin`:''}${np?`; ${rS} ${np>1?'are':'is'} pose sketch${np>1?'es':''}`:''}.`);
-  L.push(P?"Subject: the person from the photo. Preserve their face, identity, hairstyle, skin tone and body proportions exactly; they must stay recognisably the same adult.":`Subject: ${(W.char=='custom'?W.charTxt:ch[2])||ch[2]||'an adult model'}. Always an adult with adult proportions.`);
+  L.push(P?"Subject: the person from the photo. Preserve their face, identity, hairstyle, skin tone and body proportions exactly; they must stay recognisably the same adult.":`Subject: ${(W.char=='custom'?W.charTxt:ch[2])||ch[2]||'an adult model'}${bd?`, ${bd[1]}`:''}. Always an adult with adult proportions.`);
   if(G)L.push(`Outfit: dress the subject in the complete outfit from ${rG}, reproducing every garment faithfully — cut, color, fabric, pattern, layering, shoes and accessories${gi.length?': '+gi.map(x=>x.en.replace(/^[^,]*outfit,\s*/,'')).join('; '):''}. Replace the original clothing entirely. Never draw the mannequin or a blank body.`);
   if(np)L.push((sheet&&W.bm=='sheet'?`Pose: draw ${np} panels in one image, one per pose sketch, same subject and outfit in every panel, with even spacing and no text: `:'Pose: ')+ps.map((p,i)=>(sheet&&W.bm=='sheet'?`(${i+1}) `:'')+poseDesc(p,true)).join('; ')+'. Use the sketch only for body posture, weight, limb placement and camera angle; never draw sketch lines, joint circles or guide marks.');
   else if(P)L.push('Pose: keep the original pose, framing and camera angle.');
   L.push(`Look: ${P&&W.keepBg&&!isGen()?'keep the original background and lighting of the photo; ':''}${style[2]}. Natural fabric drape with realistic folds and shadows, high detail. No text, no watermark, no borders.`);
   if(ex)L.push('Additional: '+ex)}
  else{L.push(P?`时尚${isGen()?'生图':'虚拟试穿'}，使用参考图。${rP}是人物照片（同一人）${G?`；${rG}是放在隐形人台上的服装${G>1?'（上装与下装）':''}`:''}${np?`；${rS}是姿势线稿`:''}。`:`根据参考图进行时尚生图。${G?`${rG}是放在隐形人台上的服装`:''}${np?`；${rS}是姿势线稿`:''}。`);
-  L.push(P?'人物：照片中的人。严格保留其面部、身份特征、发型、肤色与身材比例，必须一眼认出是同一位成年人。':`人物：${(W.char=='custom'?W.charTxt:ch[3])||ch[3]||'一位成年模特'}。始终为成年人比例。`);
+  L.push(P?'人物：照片中的人。严格保留其面部、身份特征、发型、肤色与身材比例，必须一眼认出是同一位成年人。':`人物：${(W.char=='custom'?W.charTxt:ch[3])||ch[3]||'一位成年模特'}${bd?`，身材${bd[0]}`:''}。始终为成年人比例。`);
   if(G)L.push(`服装：为人物换上${rG}中的整套服装，准确还原版型、颜色、面料、图案、叠穿、鞋袜与配饰${gi.length?'：'+gi.map(x=>x.zh.replace(/[。.]$/,'')).join('；'):''}。完全替换原有衣物，不要画出人台或空白身体。`);
   if(np)L.push((sheet&&W.bm=='sheet'?`姿势：在同一张图中画 ${np} 格，每格对应一张线稿，人物与服装保持一致，均匀留白，不写文字：`:'姿势：')+ps.map((p,i)=>(sheet&&W.bm=='sheet'?`（${i+1}）`:'')+poseDesc(p,false)).join('；')+'。线稿只用于提取身体姿态、重心、四肢位置和镜头角度，不要画出线条、关节圆或辅助线。');
   else if(P)L.push('姿势：保持原照片的姿势、构图和拍摄角度。');
@@ -54,6 +57,25 @@ function compose(poseSet){const en=W.pl=='en',P=W.persons.length,G=W.garments.le
   if(ex)L.push('补充：'+ex)}
  return L.join('\n')}
 function reprompt(force){if(force||!W.dirty){$('#wbPrompt').value=compose();W.dirty=false}}
+// ComfyUI 专用：目标画面描述式提示词（不含任何"参考图/第X张/试穿"字样，编辑模型对此敏感）
+function composeC(set,en){const P=W.persons.length,G=W.garments.length,ps=set&&set.length?set:W.poses;
+ const style=STYLES.find(s=>s[0]==W.style)||STYLES[0],ch=CHARS.find(c=>c[0]==W.char)||CHARS[0],ex=$('#wbExtra').value.trim(),bd=isGen()?BODY.find(b=>b[0]==W.body):null;
+ const L=[];
+ if(P){const pit=W.persons.map(p=>p.k&&ITEMS[p.k]).find(Boolean);
+  const cut=s=>(s||'').replace(/, consistent facial features, face reference$/,'').replace(/, (front-facing head-and-shoulders portrait|casual selfie-style lifestyle photo)[^]*$/,'').replace(/，(正面半身肖像|自拍风生活照).*$/,'');
+  L.push(en?`Subject: ${pit?cut(pit.en):'the person in the photo'}${bd?`, ${bd[1]}`:''}. Keep this exact face, hairstyle and body proportions; exactly one person in the frame.`:
+   `人物：${pit?cut(pit.zh):(W.char=='custom'?W.charTxt:ch[3])||'照片中的人物'}${bd?`，身材${bd[0]}`:''}。保持这张脸的长相、发型与肤色完全不变，画面中只有这一位成年人。`)}
+ else{L.push(en?`Subject: ${(W.char=='custom'?W.charTxt:ch[2])||ch[2]||'an adult model'}${bd?`, ${bd[1]}`:''}. Always an adult with adult proportions, exactly one person in the frame.`:
+  `人物：${(W.char=='custom'?W.charTxt:ch[3])||ch[3]||'一位成年模特'}${bd?`，身材${bd[0]}`:''}。始终为成年人比例，画面中只有一个人。`)}
+ const gi=W.garments.map(g=>g.kind=='lib'&&A.ITEMS[g.k]).filter(Boolean);
+ if(G)L.push(en?`Outfit: ${gi.map(x=>x.en.replace(/, consistent facial features, face reference$/,'').replace(/^\w+ outfit, /,'')).join('; ')}. Reproduce every garment faithfully — cut, color, fabric and accessories.`:
+  `服装：${gi.map(x=>x.zh.replace(/[。.]$/,'')).join('；')}。准确还原整套服装的版型、颜色、面料与配饰。`);
+ if(ps.length)L.push((en?'Pose: ':'姿势：')+ps.map(p=>poseDesc(p,en)).join(en?'; ':'；')+(en?'. Single person, full body.':'。单人，全身。'));
+ else if(P&&!isGen())L.push(en?'Pose: keep the original pose and framing.':'姿势：保持原照片的姿势与构图。');
+ L.push(en?`Look: ${style[2]}. Photorealistic, natural fabric drape, high detail, single person in the frame.`:
+  `画面：${style[3]}。写实摄影，衣物垂坠自然，高细节，画面中只有一个人。`);
+ if(ex)L.push((en?'Additional: ':'补充：')+ex);
+ return L.join('\n')}
 // ---------- 渲染 ----------
 function pickRow(a,type,i){const it=a.kind=='lib'&&A.ITEMS[a.k];if(a.kind=='lib'&&!it)return'<div class="empty0">加载中…</div>';
  const src=it?(type=='pose'?it.angles[a.ai??it.ai].t:A.thumb(it)):a.url,t=it?A.title(it):(a.name||'自定义图片'),sub=it?(it.type=='pose'?it.line+' · '+it.angles[a.ai??it.ai].zh:it.cat+' · '+it.id):(type=='costume'?(W.garments.length>1?(i==0?'上装':'下装'):'本地上传'):'本地上传');
@@ -64,12 +86,14 @@ function render(){const G=isGen();$$('[data-mode]').forEach(b=>b.classList.toggl
  $('#wbPersons').innerHTML=W.persons.map((p,i)=>`<div class="pp"><img src="${p.url}" alt="人物照片 ${i+1}"><small>${p.w}×${p.h}</small><button class="x" data-rmp="${i}" aria-label="移除">×</button></div>`).join('');
  $('#wbDrop').classList.toggle('mini',W.persons.length>0);$('#wbDrop').hidden=W.persons.length>=3;$('#wbChar').hidden=!G||hasPerson();
  $('#wbChars').innerHTML=CHARS.map(c=>`<button class="chip ${W.char==c[0]?'on':''}" data-char="${c[0]}">${c[1]}</button>`).join('');$('#wbCharTxt').hidden=W.char!='custom';$('#wbCharTxt').value=W.charTxt;
+ $('#wbBody').innerHTML=BODY.map(b=>`<button class="chip ${W.body==b[0]?'on':''}" data-body="${b[0]}">${b[0]}</button>`).join('');
  $('#wbG').innerHTML=W.garments.length?W.garments.map((g,i)=>pickRow(g,'costume',i)).join(''):'<button class="empty0" data-pick="costume"><span><b>选择服装</b><small>从库里选，或上传图片</small></span></button>';
  $('#wbPo').innerHTML=W.poses.length?W.poses.map((p,i)=>pickRow(p,'pose',i)).join(''):`<button class="empty0" data-pick="pose"><span><b>选择姿势（可选）</b><small>${G?'不选就随机':'不选就保持原姿势'}</small></span></button>`;
  $('#wbBatch').hidden=W.poses.length<2;$$('[data-bm]').forEach(b=>b.classList.toggle('on',b.dataset.bm==W.bm));$('#wbAllAng').hidden=W.poses.length!=1||!A.ITEMS[(W.poses[0]||{}).k];
  $('#wbStyles').innerHTML=STYLES.map(s=>`<button class="chip ${W.style==s[0]?'on':''}" data-style="${s[0]}">${s[1]}</button>`).join('');$('#wbKeepBg').checked=W.keepBg;$('#wbKeepBg').closest('label').hidden=G||!hasPerson();
  $$('[data-pl]').forEach(b=>b.classList.toggle('on',b.dataset.pl==W.pl));
- const ok=!!cfg.key;$('#wbDot').className='dot'+(ok?' on':'');$('#wbProv').textContent=ok?PROV[cfg.prov].name+' · '+modelOf():'未配置 API';$('#wbDot2').className='dot'+(ok?' on':'');$('#wbProv2').textContent=ok?PROV[cfg.prov].name:'未配置 API';$('#wbOnb').hidden=ok;
+ {const cf=cfg.prov=='comfyui',ARL={auto:'自动','2:3':'竖 2:3','3:4':'竖 3:4','4:5':'竖 4:5','9:16':'竖 9:16','1:1':'方 1:1','4:3':'横 4:3','3:2':'横 3:2','16:9':'横 16:9','21:9':'超宽 21:9','2:3h':'竖 2:3 · 高清','3:4h':'竖 3:4 · 高清','9:16h':'竖 9:16 · 高清','1:1h':'方 1:1 · 高清','4:3h':'横 4:3 · 高清','16:9h':'横 16:9 · 高清'};$$('#wbAR option').forEach(o=>{const b=ARL[o.value];if(b)o.textContent=cf?(FL2[o.value]?`${b} · ${FL2[o.value][0]}×${FL2[o.value][1]}`:'自动 · 工作流默认 1024×1360'):b})}
+ const ok=!!cfg.key||cfg.prov=='comfyui';$('#wbDot').className='dot'+(ok?' on':'');$('#wbProv').textContent=ok?PROV[cfg.prov].name+(modelOf()?' · '+modelOf():''):'未配置 API';$('#wbDot2').className='dot'+(ok?' on':'');$('#wbProv2').textContent=ok?PROV[cfg.prov].name:'未配置 API';$('#wbOnb').hidden=ok;
  const dn=[G?true:hasPerson(),W.garments.length>0,W.poses.length>0,!!(W.style||$('#wbExtra').value)];$$('.step[data-s]').forEach(e=>e.classList.toggle('done',dn[e.dataset.s-1]));
  const jobs=nJobs();$('#wbGo').textContent='生成';$('#wbEst').textContent=`将生成 ${jobs} 张`;
  const miss=[!G&&!hasPerson()&&'人物照片',!W.garments.length&&'服装',!ok&&'API 密钥'].filter(Boolean);$('#wbHint').textContent=miss.length?'还缺：'+miss.join('、'):'每张约半分钟';$('#wbHint').classList.toggle('miss',!!miss.length);const need=[!G&&!hasPerson()&&'上传人物照片',!W.garments.length&&'选择服装'].filter(Boolean);if(!W.busy){$('#wbGo').disabled=!!need.length;$('#wbGo').title=need.length?'请先'+need.join('、'):'';if(need.length)$('#wbGo').textContent='请先'+need[0]}$$('.flow [data-f]').forEach(e=>e.classList.toggle('on',e.dataset.f<4?dn[e.dataset.f-1]&&(e.dataset.f!=3||W.poses.length>0):!need.length));
@@ -90,6 +114,7 @@ $('#studio').addEventListener('click',e=>{const t=e.target;let b;
  if(b=t.closest('[data-pl]')){W.pl=b.dataset.pl;SV('wbPl',W.pl);reprompt(true);render()}
  if(b=t.closest('[data-mode]')){W.mode=b.dataset.mode;SV('wbMode',W.mode);if(W.mode=='gen'&&W.style=='keep'){W.style='studio'}if(W.mode=='tryon'&&W.style=='studio'&&!W.dirtyStyle)W.style='keep';W.dirty=false;render()}
  if(b=t.closest('[data-char]')){W.char=b.dataset.char;SV('wbChar',W.char);render()}
+ if(b=t.closest('[data-body]')){W.body=W.body==b.dataset.body?'':b.dataset.body;SV('wbBody',W.body);reprompt(true);render()}
  if(b=t.closest('[data-style]')){W.style=b.dataset.style;W.dirtyStyle=1;SV('wbStyle',W.style);render()}
  if(b=t.closest('[data-bm]')){W.bm=b.dataset.bm;SV('wbBm',W.bm);render()}});
 $('#studio').addEventListener('change',e=>{const s=e.target.closest('[data-ang]');if(s){W.poses[+s.dataset.ang].ai=+s.value;render()}if(e.target.id=='wbN')render();if(e.target.id=='wbKeepBg'){W.keepBg=e.target.checked;SV('wbKeepBg',W.keepBg);render()}});
@@ -128,28 +153,43 @@ function neutralize(p){let t=p;for(const [a,b] of NEUTRAL)t=t.replace(a,b?'\x01'
  t=t.replace(/\b(with|and|in)\s+\x02\s+(?:and|with)\b/gi,'$1').replace(/\x01\x02*\x01/g,'、').replace(/\x01\s+\x01/g,' ').replace(/[\x01]/g,'').replace(/\s*\x02\s*/g,' ')
   .replace(/(^|[，,、；;：:。.\n])\s*(?:and|with|,)?\s*(?=[，,、；;。.\n]|$)/g,'$1').replace(/([，、；])[，、；]+/g,'$1').replace(/([,;])\s*[,;]+/g,'$1').replace(/[ \t]{2,}/g,' ').replace(/\s+([,.;，。；、])/g,'$1').replace(/^[，,、]\s*|[，,、]\s*$/gm,'').replace(/[,，、]\s*([.。;；])/g,'$1');
  const zh=/[\u4e00-\u9fa5]/.test(t.slice(0,40))&&W.pl!='en';return FRAME[zh?'zh':'en']+'\n'+t}
-function cfgFill(){$$('[name=prov]').forEach(r=>r.checked=r.value==cfg.prov);const P=PROV[cfg.prov];$('#cfBase').value=cfg.base;$('#cfBase').placeholder=P.base||'https://你的中转地址/v1';$('#cfKey').value=cfg.key;$('#cfKey').placeholder=cfg.prov=='gemini'?'AIza…':'sk-… / 方舟 API Key';
- $('#cfModel').value=cfg.model;$('#cfModel').placeholder=P.model;$('#cfModels').innerHTML=P.models.map(m=>`<option value="${m}">`).join('');$('#cfField').value=cfg.field;$('#cfProto').value=cfg.proto;$('#cfProtoW').hidden=cfg.prov!='custom';$('#cfFieldW').hidden=!(cfg.prov=='custom'&&cfg.proto=='edits');$('#cfProxy').checked=cfg.proxy;$('#cfHelp').innerHTML=({openai:'在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> 创建密钥；gpt-image-1 需要已验证的组织。',gemini:'在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免费获取 API Key（AIza 开头）。',seedream:'在 <a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">火山方舟控制台</a> 开通 Seedream 模型并创建 API Key；会自动走本站代理。',custom:'填写中转商提供的 Base URL（通常以 /v1 结尾）与密钥，并按中转文档选择接口协议。'})[cfg.prov]||'';$('#cfMsg').textContent='';$('#cfMsg').className='fine'}
-function cfgRead(){return{prov:($('[name=prov]:checked')||{}).value||'openai',base:$('#cfBase').value.trim(),key:$('#cfKey').value.trim(),model:$('#cfModel').value.trim(),field:$('#cfField').value,proto:$('#cfProto').value,proxy:$('#cfProxy').checked}}
+function cfgFill(){$$('[name=prov]').forEach(r=>r.checked=r.value==cfg.prov);const P=PROV[cfg.prov];$('#cfBase').value=cfg.base;$('#cfBase').placeholder=P.base||'https://你的中转地址/v1';$('#cfKey').value=cfg.key;$('#cfKey').placeholder=cfg.prov=='comfyui'?'无需 Key，留空即可':cfg.prov=='gemini'?'AIza…':'sk-… / 方舟 API Key';
+ $('#cfModel').value=cfg.model;$('#cfModel').placeholder=P.model;$('#cfModels').innerHTML=P.models.map(m=>`<option value="${m}">`).join('');$('#cfField').value=cfg.field;$('#cfProto').value=cfg.proto;$('#cfProtoW').hidden=cfg.prov!='custom';$('#cfFieldW').hidden=!(cfg.prov=='custom'&&cfg.proto=='edits');$('#cfProxy').checked=cfg.proxy;$('#cfProxyW').hidden=cfg.prov=='comfyui';$('#cfWfW').hidden=cfg.prov!='comfyui';$('#cfKeyW').hidden=cfg.prov=='comfyui';$('#cfModelW').hidden=cfg.prov=='comfyui';
+ $('#cfWf').value=cfg.wf;['np','ng','ns','nt','nw'].forEach(f=>{$('#cf'+f.toUpperCase()).value=cfg[f]||''});$('#cfNSz').value=cfg.nsz||'';
+ $('#cfHelp').innerHTML=({openai:'在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> 创建密钥；gpt-image-1 需要已验证的组织。',gemini:'在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免费获取 API Key（AIza 开头）。',seedream:'在 <a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">火山方舟控制台</a> 开通 Seedream 模型并创建 API Key；会自动走本站代理。',custom:'填写中转商提供的 Base URL（通常以 /v1 结尾）与密钥，并按中转文档选择接口协议。',comfyui:'本机 ComfyUI 需以 <code>--enable-cors-header "*"</code> 参数启动。粘贴工作流 JSON（API 格式）后填好各节点的编号（即 JSON 里的键名）。图片会自动上传到 ComfyUI 后提交工作流，无需 API Key。出图尺寸节点（可选）：填 Latent 节点编号后，界面上选的「画幅」会自动写入它的宽高（约 1.2MP，适合 12GB 显存）；选「自动」则用工作流默认尺寸。'})[cfg.prov]||'';$('#cfMsg').textContent='';$('#cfMsg').className='fine'}
+function cfgRead(){return{prov:($('[name=prov]:checked')||{}).value||'openai',base:$('#cfBase').value.trim(),key:$('#cfKey').value.trim(),model:$('#cfModel').value.trim(),field:$('#cfField').value,proto:$('#cfProto').value,proxy:$('#cfProxy').checked,wf:$('#cfWf').value,np:$('#cfNP').value.trim(),ng:$('#cfNG').value.trim(),ns:$('#cfNS').value.trim(),nt:$('#cfNT').value.trim(),nw:$('#cfNW').value.trim(),nsz:$('#cfNSz').value.trim()}}
 const cfgOpen=()=>{cfgFill();$('#cfg').hidden=false;document.body.style.overflow='hidden'},cfgClose=()=>{$('#cfg').hidden=true;document.body.style.overflow=''};
 $('#wbCfg').onclick=cfgOpen;$('#wbCfg2').onclick=cfgOpen;$('#wbOnbGo').onclick=cfgOpen;$('#cfgX').onclick=cfgClose;$('#cfg').addEventListener('click',e=>{if(e.target.id=='cfg')cfgClose()});
 $$('[name=prov]').forEach(r=>r.onchange=()=>{const o=cfgRead();Object.assign(cfg,o,{base:'',model:''});if(o.prov=='seedream')cfg.proxy=true;cfgFill();if(o.prov=='seedream')msg('火山方舟接口不允许浏览器跨域，已开启本站代理')});
 $('#cfProto').onchange=()=>{cfg.proto=$('#cfProto').value;$('#cfFieldW').hidden=cfg.proto!='edits'};
 $('#cfEye').onclick=()=>{const k=$('#cfKey');k.type=k.type=='password'?'text':'password';$('#cfEye').textContent=k.type=='password'?'显示':'隐藏'};
-$('#cfSave').onclick=()=>{const o=cfgRead();if(o.prov=='custom'&&!o.base)return msg('自定义中转需要填写 Base URL',1);Object.assign(cfg,o);SV('wbCfg',cfg);render();cfgClose();toast('API 设置已保存在本机')};
+$('#cfWf').onblur=()=>{const v=$('#cfWf').value.trim();if(!v)return;let wf;try{wf=JSON.parse(v)}catch(e){return msg('工作流 JSON 解析失败：'+e.message,1)}
+ const li=Object.keys(wf).filter(k=>/loadimage/i.test(wf[k].class_type||'')),te=Object.keys(wf).filter(k=>/cliptextencode/i.test(wf[k].class_type||''));
+ if(li.length){['np','ng','ns'].forEach((f,i)=>{const el=$('#cf'+f.toUpperCase());if(!el.value.trim()&&li[i])el.value=String(li[i])});
+  msg(`已识别 ${li.length} 个图片节点（${li.join('、')}）`+(li.length<3?'，不够人物/服装/姿势分别使用时，可在 ComfyUI 里加 LoadImage 节点':'')+'，请核对')}
+ if(te.length){const best=te.map(String).sort((a,b)=>String((wf[b].inputs||{}).text||'').length-String((wf[a].inputs||{}).text||'').length)[0];
+  if(!$('#cfNT').value.trim())$('#cfNT').value=best;if(!li.length)msg(`提示词节点建议用 ${best}，请核对`)}};
+$('#cfSave').onclick=()=>{const o=cfgRead();if(o.prov=='custom'&&!o.base)return msg('自定义中转需要填写 Base URL',1);
+ if(o.prov=='comfyui'&&o.wf.trim()){try{JSON.parse(o.wf)}catch(e){return msg('工作流 JSON 解析失败：'+e.message,1)}if(!o.nt.trim())return msg('请填写「提示词节点 ID」（带 text 输入的 CLIPTextEncode 节点编号）',1)}
+ Object.assign(cfg,o);SV('wbCfg',cfg);render();cfgClose();toast('API 设置已保存在本机')};
 $('#cfClr').onclick=()=>{cfg.key='';$('#cfKey').value='';SV('wbCfg',cfg);render();msg('已从本机清除密钥')};
 function msg(t,bad){const m=$('#cfMsg');m.textContent=t;m.className='fine '+(bad?'bad':'good')}
-$('#cfTest').onclick=async()=>{const o=cfgRead();if(!o.key)return msg('请先填写 API Key',1);if(o.prov=='custom'&&!o.base)return msg('请填写 Base URL',1);const old=Object.assign({},cfg);Object.assign(cfg,o);msg('正在连接…');
+$('#cfTest').onclick=async()=>{const o=cfgRead();if(o.prov!='comfyui'&&!o.key)return msg('请先填写 API Key',1);if(o.prov=='custom'&&!o.base)return msg('请填写 Base URL',1);const old=Object.assign({},cfg);Object.assign(cfg,o);msg('正在连接…');
+ if(cfg.prov=='comfyui'){try{const r=await call(`${root()}/system_stats`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok||!j||!j.system)throw Error('HTTP '+r.status);
+  const dev=(j.devices||[]).map(d=>d.name).filter(Boolean).join('、');
+  msg(`连接成功：ComfyUI ${j.system.comfyui_version||''}${dev?' · '+dev:''}，可以直接生成测试`)}catch(e){msg(nice(e),1)}finally{Object.assign(cfg,old)}return}
  try{const g=cfg.prov=='gemini',url=g?`${root()}/models/${encodeURIComponent(modelOf())}`:`${root()}/models`;const r=await call(url,{method:'GET',headers:auth()});const j=await r.json().catch(()=>null);
   if(!r.ok){if(cfg.prov=='seedream'&&r.status==404)return msg('地址可达、密钥已被接受（方舟不提供模型列表接口，可直接生成测试）');throw await apiErr(r,j)}
   if(g)msg(`连接成功：模型 ${j&&j.displayName||modelOf()} 可用`);else{const ids=(j&&j.data||[]).map(m=>m.id),has=ids.includes(modelOf());msg(`连接成功：共 ${ids.length} 个模型`+(ids.length?(has?`，包含 ${modelOf()}`:`，但未找到 ${modelOf()}（中转可能不列出，可直接尝试）`):''))}}
  catch(e){msg(nice(e),1)}finally{Object.assign(cfg,old)}};
 // ---------- 请求 ----------
-function auth(){return cfg.prov=='gemini'?{'x-goog-api-key':cfg.key}:{Authorization:'Bearer '+cfg.key}}
+function auth(){if(cfg.prov=='comfyui')return{};return cfg.prov=='gemini'?{'x-goog-api-key':cfg.key}:{Authorization:'Bearer '+cfg.key}}
 const p2=n=>String(n).padStart(2,'0'),stamp=d=>`${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
 const OFF=/^(api\.openai\.com|generativelanguage\.googleapis\.com|ark\.[a-z0-9-]+\.(volces|bytepluses)\.com)$/;
-function call(url,o){let hn='';try{hn=new URL(url).hostname}catch(e){}const cu=cfg.prov=='custom'||!OFF.test(hn);if(!cfg.proxy&&!cu)return fetch(url,o);const h=new Headers(o.headers||{});h.set('x-target-url',url);if(cu)h.set('x-proxy-custom','1');return fetch('/api/proxy',Object.assign({},o,{headers:h}))}
+function call(url,o){let hn='';try{hn=new URL(url).hostname}catch(e){}if(cfg.prov=='comfyui')return fetch(url,o);const cu=cfg.prov=='custom'||!OFF.test(hn);if(!cfg.proxy&&!cu)return fetch(url,o);const h=new Headers(o.headers||{});h.set('x-target-url',url);if(cu)h.set('x-proxy-custom','1');return fetch('/api/proxy',Object.assign({},o,{headers:h}))}
 async function fetchResult(url){let r=await fetch(url).catch(()=>null);if(!r||!r.ok)r=await fetch('/api/proxy',{headers:{'x-target-url':url,'x-proxy-kind':'image'}}).catch(()=>null);if(r&&r.ok)return r.blob();const e=Error('');e.zh='结果图片无法在浏览器中下载，请直接打开：'+url;throw e}
+const TMO=()=>window.__TMO||(cfg.prov=='comfyui'?600000:180000);
+const fmtTMO=()=>{const s=Math.round(TMO()/1000);return s>=90?Math.round(s/60)+' 分钟':s+' 秒'};
 
 const SAFE_RE=/safety system|safety_violations|moderation_blocked|content_policy_violation|content policy|SensitiveContent|sensitive content|PROHIBITED_CONTENT|IMAGE_SAFETY|\bSAFETY\b|BLOCKLIST|SPII|blocked by|内容安全|敏感/i;
 const CAT=[[/minor|child|CSAM/i,'涉及未成年人'],[/sexual|SEXUALLY_EXPLICIT|nudity|porn|色情/i,'性感/暴露内容'],[/violen|gore|血腥|暴力/i,'暴力或血腥'],[/self-?harm/i,'自残'],[/hate|HATE_SPEECH/i,'仇恨'],[/harass/i,'骚扰'],[/illicit|DANGEROUS/i,'危险或违法内容'],[/SPII|personal/i,'个人隐私信息'],[/copyright|RECITATION|trademark/i,'版权内容']];
@@ -159,13 +199,86 @@ function safeErr(raw,j,rid){const t=String(raw||'')+' '+JSON.stringify(j||'');if
 async function apiErr(r,j){if(j===undefined)j=await r.json().catch(()=>null);const raw=(j&&(j.error&&(j.error.message||j.error.status||j.error)||j.message))||r.statusText||'';{const se=safeErr(typeof raw=='string'?raw:JSON.stringify(raw),j,(j&&j.error&&j.error.request_id)||r.headers.get('x-request-id'));if(se){se.status=r.status;return se}}
  const m={400:'请求参数有误：常见原因是模型不支持参考图、画幅尺寸不对或图片格式不支持，可换个模型或画幅再试',401:'密钥无效或已过期，请检查 API Key',403:'没有权限：密钥无此模型权限、账户未验证，或所在地区不受支持',404:'地址或模型不存在：请检查 Base URL 和模型名',413:'图片太大，请换一张更小的照片',429:'请求过于频繁或额度已用完，请稍后再试或检查账户余额',500:'服务商内部错误，请稍后重试',502:'网关错误（中转服务不可用）',503:'服务暂时不可用，请稍后重试',504:'服务商响应超时，请重试'}[r.status]||('请求失败（HTTP '+r.status+'）');
  let t=String(typeof raw=='string'?raw:JSON.stringify(raw));if(cfg.key)t=t.split(cfg.key).join('***');const bad=/API_KEY_INVALID|API key not valid|invalid api key|Incorrect API key|AuthenticationError|InvalidApiKey/i.test(t+' '+JSON.stringify(j||''));const e=Error(t);e.status=r.status;e.zh=(bad?'密钥无效或已过期，请检查 API Key':m)+(t?`\n服务商返回：${t.slice(0,300)}`:'');return e}
-function nice(e){if(e.name=='AbortError')return'已取消';if(e instanceof TypeError)return'无法连接到服务商：网络不通，或该地址不允许浏览器跨域访问（CORS）。\n可在 API 设置中开启「通过本站代理转发」。';return e.zh||e.message||String(e)}
+function nice(e){if(e.name=='AbortError')return'已取消';if(e instanceof TypeError)return cfg.prov=='comfyui'?'无法连接本地 ComfyUI：请确认 ComfyUI 已启动（默认地址 http://127.0.0.1:8188），并且启动时带 --enable-cors-header "*" 参数。\n'+(e.message||''):'无法连接到服务商：网络不通，或该地址不允许浏览器跨域访问（CORS）。\n可在 API 设置中开启「通过本站代理转发」。';return e.zh||e.message||String(e)}
 const AR={auto:null,'2:3':'1024x1536','3:4':'1024x1536','9:16':'1024x1536','1:1':'1024x1024','4:3':'1536x1024','16:9':'1536x1024'};
+// ComfyUI Latent 尺寸预设（标准档 1.4~1.5MP，高清档 ≈2MP；16 的倍数，适合 12GB 显存）
+const FL2={'2:3':[960,1440],'3:4':[1024,1360],'4:5':[1024,1280],'9:16':[896,1600],'1:1':[1152,1152],'4:3':[1360,1024],'3:2':[1344,896],'16:9':[1600,896],'21:9':[1664,720],
+ '2:3h':[1152,1728],'3:4h':[1216,1632],'9:16h':[1088,1920],'1:1h':[1408,1408],'4:3h':[1728,1152],'16:9h':[1920,1088]};
 const SD={auto:'1728x2304','2:3':'1664x2496','3:4':'1728x2304','9:16':'1440x2560','1:1':'2048x2048','4:3':'2304x1728','16:9':'2560x1440'};
 const toB=async d=>(await fetch('data:image/png;base64,'+d)).blob();
+// ---------- 本地 ComfyUI ----------
+const zhErr=m=>{const e=Error(m);e.zh=m;return e};
+const wfIds=f=>(cfg[f]||'').split(/[,，\s]+/).map(x=>x.trim()).filter(Boolean);
+async function comfyUpload(b,sig,name){const fd=new FormData();fd.append('image',b,name);fd.append('type','input');fd.append('overwrite','true');
+ const r=await call(`${root()}/upload/image`,{method:'POST',signal:sig,body:fd});const j=await r.json().catch(()=>null);
+ if(!r.ok||!j||!j.name){const e=Error('upload failed');e.zh='上传参考图到本地 ComfyUI 失败'+(j&&j.error?`：${j.error}`:`（HTTP ${r.status}）`);e.status=r.status;throw e}return j.name}
+async function comfyGen(imgs,prompt,sig,meta,ar){const base=root();
+ const wfS=(cfg.wf||'').trim();if(!wfS)throw zhErr('请先在 API 设置里粘贴 ComfyUI 的工作流 JSON（ComfyUI 开启开发者模式后，点「导出（API）」得到的就是这个 JSON）');
+ let wf;try{wf=JSON.parse(wfS)}catch(e){throw zhErr('工作流 JSON 解析失败：'+e.message)}
+ meta=meta||{np:0,ng:0,nps:0};
+ const want=[['np',meta.np,'人物图'],['ng',meta.ng,'服装图'],['ns',meta.nps,'姿势图']];
+ const warns=[],slots=[],used={};let off=0,ui=0;
+ for(const[fid,count,label] of want){const L=wfIds(fid);
+  for(let i=0;i<count;i++){const nid=L[i];
+   if(!nid){warns.push(`未设置${label}节点 ID，第 ${i+1} 张${label}参考图未发送`);break}
+   slots.push([nid,imgs[off+i],label])}
+  off+=count}
+ for(const[nid] of slots)used[nid]=(used[nid]||0)+1;
+ for(const[nid,b,label] of slots){const n=wf[nid];
+  if(!n||!n.inputs)throw zhErr(`工作流里没有编号为「${nid}」的节点，请检查「${label}节点 ID」`);
+  if(!('image'in n.inputs))throw zhErr(`节点「${nid}」不是图片加载节点（没有 image 输入），请检查「${label}节点 ID」`);
+  if(used[nid]>1)warns.push(`节点 ${nid} 被多张参考图共用，只有最后一张会生效，建议在 ComfyUI 里加一个 LoadImage 节点`);
+  n.inputs.image=await comfyUpload(b,sig,`posewear-ref-${++ui}.jpg`)}
+ const pid=(cfg.nt||'').trim(),pn=wf[pid];
+ if(!pn||!pn.inputs||!('text'in pn.inputs))throw zhErr('「提示词节点 ID」无效：需要指向工作流里带 text 输入的节点（通常是 CLIPTextEncode），编号即 JSON 里的键名');
+ // 每次生成随机化所有采样种子，否则同样的输入永远得到同一张图
+ for(const k in wf){const inp=wf[k]&&wf[k].inputs;if(inp&&('seed'in inp||'noise_seed'in inp)&&typeof inp[('seed'in inp)?'seed':'noise_seed']=='number')inp[('seed'in inp)?'seed':'noise_seed']=Math.floor(Math.random()*1e15)}
+ // 参考图规则：ReferenceLatent 是软条件，编辑模型可能把参考图当画面内容复现（多人/线稿入画），显式声明各图用途
+ // 首选：按当前选择重新组装"目标画面描述"式提示词（不含任何参考图字样，实验验证最稳）；用户手动编辑过提示词时走清理路径
+ {const zh=/[\u4e00-\u9fa5]/.test(prompt.slice(0,80)),en=W.pl=='en';
+  if(!W.dirty)prompt=composeC(meta&&meta.set,W.pl=='en');
+  else{const lines=prompt.split('\n');if(lines.length>1&&/第\s*1\s*张|image\s*1\s/i.test(lines[0]))lines.splice(lines.findIndex(l=>/第\s*1\s*张|image\s*1\s/i.test(l)),1);prompt=lines.join('\n');
+   prompt=prompt.replace(/image \d+/gi,'the reference').replace(/第\s*\d+\s*张/g,'参考图').replace(/sketch lines/gi,'guide lines').replace(/the sketch/gi,'the pose reference').replace(/线稿/g,'姿势参考');
+   const pit2=W.persons.map(p=>p.k&&ITEMS[p.k]).find(Boolean);
+   if(pit2)prompt=prompt
+    .replace(/Subject: the person from the photo\. Preserve their face, identity, hairstyle, skin tone and body proportions exactly; they must stay recognisably the same adult\./,
+     `Subject: ${(pit2.en||'').replace(/, consistent facial features, face reference$/,'')}. Preserve this exact face, hairstyle, skin tone and body proportions; the person must stay recognisably the same adult.`)
+    .replace(/人物：照片中的人。严格保留其面部、身份特征、发型、肤色与身材比例，必须一眼认出是同一位成年人。/,
+     `人物：${pit2.zh}。严格保留这张脸的长相、发型、肤色与身材比例，必须一眼认出是同一位成年人。`)}
+  prompt+=zh?'\n\n规则：参考图只用于提取信息——人物照片取长相发型与身材，服装图取服装款式，姿势线稿取身体姿态。最终画面只画一个人，不要复现参考图本身，不要出现线稿或人台，不要画参考图的背景。':'\n\nRules: the references are only information — identity from the person photo, garment design from the outfit image, body posture from the sketch. The final image shows exactly one person; never reproduce the reference images themselves, no panels, no sketch lines, no reference backgrounds.'}
+ pn.inputs.text=prompt;
+ if((cfg.nw||'').trim()){const ln=wf[cfg.nw.trim()];
+  if(!ln||!ln.inputs||!('width'in ln.inputs))throw zhErr('「出图尺寸节点 ID」无效：需要指向带 width/height 输入的 Latent 节点（如 EmptyFlux2LatentImage）');
+  const m=(cfg.nsz||'').match(/^(\d{2,5})\s*[x×*]\s*(\d{2,5})$/i);
+  if(m){ln.inputs.width=Math.max(16,Math.round(+m[1]/16)*16);ln.inputs.height=Math.max(16,Math.round(+m[2]/16)*16)}
+  else if(ar&&ar!='auto'){const sz=FL2[ar]||FL2['3:4'];ln.inputs.width=sz[0];ln.inputs.height=sz[1]}}
+ const cid='posewear-'+Math.random().toString(36).slice(2,8);
+ const pr=await call(`${base}/prompt`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:wf,client_id:cid})});
+ const pj=await pr.json().catch(()=>null);
+ if(!pr.ok||!pj||!pj.prompt_id){
+  const ne=pj&&pj.node_errors;if(ne){const ent=Object.entries(ne).find(([k,v])=>v&&v.errors&&v.errors.length);
+   const det=ent?`节点 ${ent[0]}：${ent[1].errors.map(x=>x.message||x.details||x.type||'').filter(Boolean).join('；')}`:'';
+   throw zhErr('ComfyUI 校验工作流失败'+(det?'：'+det:'，请检查工作流。'))}
+  throw await apiErr(pr,pj)}
+ const t0=Date.now();
+ while(Date.now()-t0<TMO()){
+  if(sig&&sig.aborted)throw Object.assign(Error('aborted'),{name:'AbortError'});
+  await new Promise(r=>setTimeout(r,1200));
+  const hr=await call(`${base}/history/${pj.prompt_id}`,{signal:sig});const hj=await hr.json().catch(()=>null);
+  const st=hj&&hj[pj.prompt_id];if(!st)continue;
+  const status=st.status||{};
+  if(status.status_str==='error'){const msgs=(status.messages||[]).map(m=>{const v=Array.isArray(m)?m[1]:null;return v&&(v.exception_message||v.node_message||v.message)||''}).filter(Boolean).join('；');
+   throw zhErr('ComfyUI 执行出错'+(msgs?'：'+msgs:'，请查看 ComfyUI 控制台日志。'))}
+  const outs=st.outputs||{},ims=[];
+  for(const k in outs){const o=outs[k];if(o&&o.images)for(const im of o.images)if((im.type||'output')==='output')ims.push(im)}
+  if(ims.length){const im=ims[0],q=new URLSearchParams({filename:im.filename,subfolder:im.subfolder||'',type:im.type||'output'});
+   const vr=await call(`${base}/view?${q}`,{signal:sig});if(!vr.ok)throw zhErr('取回生成图片失败（HTTP '+vr.status+'）');
+   return{blob:await vr.blob(),warn:warns.join(' ')}}}
+ throw zhErr(`等了 ${fmtTMO()} ComfyUI 还没有出图，请确认这个工作流在 ComfyUI 界面里能正常跑完。`)}
 async function openaiData(j){const d=j&&j.data&&j.data[0];if(!d){const e=Error('');e.zh='服务商没有返回图片数据'+(j&&j.error?'：'+(j.error.message||''):'');throw e}return d.b64_json?toB(d.b64_json):fetchResult(d.url)}
-async function genOnce(imgs,prompt,sig){const ar=$('#wbAR').value,m=modelOf(),P=proto();let warn='';
- if(P=='gemini'){const parts=[{text:prompt}];for(const b of imgs)parts.push({inline_data:{mime_type:b.type||'image/jpeg',data:await b64(b)}});const gc={responseModalities:['TEXT','IMAGE']};if(ar!='auto')gc.imageConfig={aspectRatio:ar};
+async function genOnce(imgs,prompt,sig,meta){const ar=$('#wbAR').value,m=modelOf(),P=proto();let warn='';
+ if(P=='comfyui')return comfyGen(imgs,prompt,sig,meta,ar);
+ if(P=='gemini'){const parts=[{text:prompt}];for(const b of imgs)parts.push({inline_data:{mime_type:b.type||'image/jpeg',data:await b64(b)}});const gc={responseModalities:['TEXT','IMAGE']};if(ar!='auto'&&/^(1:1|2:3|3:4|4:5|9:16|4:3|3:2|16:9|21:9)$/.test(ar))gc.imageConfig={aspectRatio:ar};
   const r=await call(`${root()}/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',signal:sig,headers:Object.assign({'Content-Type':'application/json'},auth()),body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:gc})});
   const j=await r.json().catch(()=>null);if(!r.ok)throw await apiErr(r,j);const c=j&&j.candidates&&j.candidates[0],ps=((j&&j.candidates)||[]).flatMap(c=>(c.content&&c.content.parts)||[]),im=ps.find(p=>(p.inlineData||p.inline_data||{}).data);
   if(!im){const why=(j&&j.promptFeedback&&j.promptFeedback.blockReason)||(c&&c.finishReason);{const rs=(c&&c.safetyRatings||[]).filter(x=>x.blocked||/HIGH|MEDIUM/.test(x.probability||'')).map(x=>x.category).join(' ');const se=why&&/SAFETY|PROHIBITED|BLOCKLIST|SPII|OTHER/i.test(why)?safeErr(why+' '+rs+' '+((c&&c.finishMessage)||''),null,j&&j.responseId):null;if(se)throw se}const t=ps.map(p=>p.text).filter(Boolean).join(' ');const e=Error(t);e.zh='模型没有返回图片'+(why?`（${why}，可能触发了安全策略）`:'')+(t?'\n模型回复：'+t.slice(0,300):'');throw e}
@@ -185,14 +298,14 @@ async function genOnce(imgs,prompt,sig){const ar=$('#wbAR').value,m=modelOf(),P=
 // ---------- 进度 ----------
 let T0,tick,PR=0,done=0,total=1;function stage(t){$('#wbStage1').textContent=t}
 function busy(on){$('#wbBusy').hidden=!on;$('#wbGo').classList.toggle('run',on);if(on)$('#wbGo').innerHTML='<i class="ring"></i>生成中…';$('#wbGo').disabled=on;clearInterval(tick);if(on){T0=Date.now();PR=.03;tick=setInterval(()=>{const s=(Date.now()-T0)/1e3,cap=(done+.95)/total;PR=Math.max(done/total,Math.min(cap,PR+(cap-PR)*.03));$('#wbProg').style.transform=`scaleX(${PR})`;$('#wbTime').textContent=`${Math.round(s)} 秒`+(total>1?` · 已完成 ${done} / ${total}`:'');},250)}else render()}
-async function run(){if(!cfg.key){toast('请先配置你的 API');return cfgOpen()}if(!isGen()&&!hasPerson())return toast('请先上传人物照片');if(!W.garments.length)return toast('请先选择服装');
+async function run(){if(!cfg.key&&cfg.prov!='comfyui'){toast('请先配置你的 API');return cfgOpen()}if(!isGen()&&!hasPerson())return toast('请先上传人物照片');if(!W.garments.length)return toast('请先选择服装');
  const ac=new AbortController();W.busy=ac;$('#wbErr').hidden=true;$('#wbWarn').hidden=true;
  const n=+$('#wbN').value||1,sets=W.poses.length>1&&W.bm=='each'?W.poses.map(p=>[p]):[W.poses];const jobs=[];sets.forEach(s=>{for(let i=0;i<n;i++)jobs.push(s)});
  done=0;total=jobs.length;busy(true);stage('正在准备素材…');const errs=[],warns=new Set(),got=[];
  try{const pb=W.persons.map(p=>p.blob),gb=await Promise.all(W.garments.map(assetBlob)),cache=new Map();const poseB=async p=>{const key=p.k+':'+p.ai;if(!cache.has(key))cache.set(key,assetBlob(p));return cache.get(key)};
   const custom=W.dirty?$('#wbPrompt').value.trim():null;stage(total>1?`模型正在绘制… 共 ${total} 张`:'模型正在绘制…');
   let q=0;const worker=async()=>{while(q<jobs.length&&!ac.signal.aborted){const set=jobs[q++];try{const imgs=[...pb,...gb,...await Promise.all(set.map(poseB))];const prompt0=custom&&sets.length==1?custom:compose(set),soft=neutralOn()&&!isAdultJob(set),prompt=soft?neutralize(prompt0):prompt0;W.lastSent=prompt;
-    const jc=new AbortController(),onA=()=>jc.abort();ac.signal.addEventListener('abort',onA);let tmo=false;const tm=setTimeout(()=>{tmo=true;jc.abort()},window.__TMO||180000);let r;try{r=await genOnce(imgs,prompt,jc.signal)}catch(x){x.sent=prompt;if(tmo&&!ac.signal.aborted){const y=Error('timeout');y.zh='等了 3 分钟还没有返回。服务商可能正忙，稍后点「重试」。';throw y}throw x}finally{clearTimeout(tm);ac.signal.removeEventListener('abort',onA)}if(r.warn)warns.add(r.warn);const rec={t:Date.now()+Math.random(),prov:cfg.prov,model:modelOf(),prompt,orig:soft?prompt0:null,neutral:soft,mode:W.mode,label:set.map(p=>poseDesc(p,false).split('（')[0]).join(' / ')||'',before:pb[0]||null,after:r.blob};got.push(rec);await save(rec);W.results=got.slice();show(got.length-1)}
+    const jc=new AbortController(),onA=()=>jc.abort();ac.signal.addEventListener('abort',onA);let tmo=false;const tm=setTimeout(()=>{tmo=true;jc.abort()},TMO());let r;try{r=await genOnce(imgs,prompt,jc.signal,{np:pb.length,ng:gb.length,nps:set.length,set})}catch(x){x.sent=prompt;if(tmo&&!ac.signal.aborted){const y=Error('timeout');y.zh=`等了 ${fmtTMO()} 还没有返回。服务商可能正忙，稍后点「重试」。`;throw y}throw x}finally{clearTimeout(tm);ac.signal.removeEventListener('abort',onA)}if(r.warn)warns.add(r.warn);const rec={t:Date.now()+Math.random(),prov:cfg.prov,model:modelOf()||'workflow',prompt,orig:soft?prompt0:null,neutral:soft,mode:W.mode,label:set.map(p=>poseDesc(p,false).split('（')[0]).join(' / ')||'',before:pb[0]||null,after:r.blob};got.push(rec);await save(rec);W.results=got.slice();show(got.length-1)}
    catch(e){if(e.name=='AbortError')throw e;errs.push(e)}finally{done++}}};
   await Promise.all(Array.from({length:Math.min(2,jobs.length)},worker));
   if(got.length){toast(got.length>1?`完成 ${got.length} 张`:'生成完成');hist()}if(errs.length){const e=errs.find(x=>x.safe)||errs[0];errBox(e,got.length?`${errs.length} 张生成失败`:'')}

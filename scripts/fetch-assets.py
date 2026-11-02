@@ -17,6 +17,7 @@ SRC = {
     'portrait': 'https://ai-portrait-gallery.pages.dev/',
 }
 OUT = os.environ.get('POSEWEAR_RAW', 'assets-raw')
+LITE = os.environ.get('POSEWEAR_LITE') == '1'  # 精简模式：跳过服装原寸图（仅用于生成 o/ 全尺寸输出）
 UA = {'User-Agent': 'Mozilla/5.0 (PoseWear local build)'}
 WORKERS = 4
 
@@ -64,7 +65,7 @@ def meta(lib):
         if 'D' not in data:
             sys.exit(f'{lib}: 页面结构可能已变化，没找到数据')
         json.dump(data, open(os.path.join(d, 'data.json'), 'w'), ensure_ascii=False)
-        keys = {'pose': ['サムネ', '原寸'], 'costume': ['画像', '原寸']}[lib]
+        keys = {'pose': ['サムネ', '原寸'], 'costume': ['サムネ', '画像'] if LITE else ['画像', '原寸']}[lib]
         return [x[k] for x in data['D'] for k in keys if x.get(k)]
     for f in ('images.js', 'ranking.js'):
         open(os.path.join(d, f), 'wb').write(get(base + 'data/' + f))

@@ -41,7 +41,7 @@ for(const prov of ['openai','gemini','seedream','custom']){hits=[];mode='ok';con
    await p.click('[data-ef=prov]');await p.waitForTimeout(300);R.push(['prov opens cfg',await p.$eval('#cfg',e=>!e.hidden),'']);await p.evaluate(()=>{document.querySelector('#cfgX').click()});
    await p.click('[data-ef=cos]');await p.waitForTimeout(400);R.push(['cos picker',await p.evaluate(()=>!document.querySelector('#pk').hidden),'']);await p.keyboard.press('Escape');await p.waitForTimeout(300)}
   for(const m of ['401','429','500']){mode=m;await go(p);s=await st(p);R.push([prov+' '+m,!!s.err&&!s.err.includes('sk-test-123'),s.err.slice(0,90)])}
-  mode='hang';await go(p);s=await st(p);R.push(['timeout',/3 分钟/.test(s.err),s.err.slice(0,60)]);
+  mode='hang';await go(p);s=await st(p);R.push(['timeout',/还没有返回/.test(s.err),s.err.slice(0,60)]);
   mode='hang';await p.click('#wbGo');await p.waitForTimeout(600);await p.click('#wbStop');await p.waitForTimeout(500);s=await st(p);R.push(['cancel',/已取消/.test(s.toast)&&await p.$eval('#wbBusy',e=>e.hidden),s.toast]);
   mode='500';await go(p);mode='ok';await p.click('#wbRetry');await p.waitForFunction(()=>document.querySelector('#wbBusy').hidden,null,{timeout:15000});s=await st(p);R.push(['retry ok',!s.err,JSON.stringify(s)]);
   mode='slow';await p.selectOption('#wbN','3').catch(e=>R.push(['wbN',false,e.message]));await p.click('#wbGo');await p.waitForTimeout(700);await p.screenshot({path:S+'d-progress.png'});await p.waitForFunction(()=>document.querySelector('#wbBusy').hidden,null,{timeout:20000});await p.waitForTimeout(300);s=await st(p);

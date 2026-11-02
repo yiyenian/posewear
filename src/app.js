@@ -7,7 +7,63 @@ const ITEMS={},DATA={},LOAD={},TABS=['pose','costume','portrait','studio','fav',
 const PFX={pose:'p:',costume:'c:',portrait:'r:'},KT={p:'pose',c:'costume',r:'portrait'},TL=it=>({pose:'姿势',costume:'服装',portrait:'人像'})[it.type];
 const st={tab:'pose',q:'',f:{},sort:'def',lang:LS('lang')||'zh',tl:LS('tl')||'zh',fav:new Set(LS('fav')||[]),sel:LS('sel')||[],rec:LS('rec')||[],recT:LS('recT')||{},ang:LS('ang')||{},list:[],n:0,adult:LS('adult')===true};
 const ok=it=>it&&(st.adult||!it.a);
-function load(t){return LOAD[t]||(LOAD[t]=fetch({pose:'poses.json',costume:'costumes.json',portrait:'portraits.json'}[t]).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(a=>{a.forEach((it,i)=>{it.type=t;it.k=PFX[t]+it.id;it.ord=i;if(t=='pose')it.ai=st.ang[it.k]||0;ITEMS[it.k]=it});DATA[t]=a;counts();return a}).catch(e=>{delete LOAD[t];throw e}))}
+// ---------- 我的面孔（自定义人像，IndexedDB 本地存储）+ 内置人像隐藏 ----------
+let FDB;const fdb=()=>FDB||(FDB=new Promise((r,j)=>{const q=indexedDB.open('posewear-faces',1);q.onupgradeneeded=()=>q.result.createObjectStore('f',{keyPath:'id'});q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)}));
+const ftx=async(m,fn)=>{const d=await fdb();return new Promise((r,j)=>{const t=d.transaction('f',m),q=fn(t.objectStore('f'));t.oncomplete=()=>r(q&&q.result);t.onerror=()=>j(t.error)})};
+const HIDF=new Set(LS('hideF')||[]),FACES=[];let faceN=LS('faceN')||0;
+const faceItem=rec=>{const u=URL.createObjectURL(rec.blob);return{type:'portrait',k:'r:'+rec.id,id:rec.id,u:1,ti:rec.name,zh:rec.zh,en:rec.en,ja:'自定义',sec:'我的面孔',len:'自定义',no:'我的',t:u,m:u,i:u,o:u,w:rec.w,h:rec.h}};
+function mergeFaces(){if(!DATA.portrait)return;FACES.forEach(rec=>{const k='r:'+rec.id;if(!ITEMS[k]){const it=faceItem(rec);ITEMS[k]=it;DATA.portrait.unshift(it)}})}
+function pruneFaces(){if(!DATA.portrait)return;const n=DATA.portrait.length;DATA.portrait=DATA.portrait.filter(it=>!HIDF.has(it.k));if(DATA.portrait.length!=n){DATA.portrait.forEach(it=>HIDF.has(it.k)&&delete ITEMS[it.k]);Object.keys(ITEMS).forEach(k=>ITEMS[k].type=='portrait'&&!DATA.portrait.includes(ITEMS[k])&&HIDF.has(k)&&delete ITEMS[k]);counts()}}
+async function addFaceFiles(files){const fs=[...files].filter(f=>/^image\//.test(f.type));if(!fs.length)return toast('没有可读取的图片');fcOpen(fs)}
+// ---------- 面孔裁切器：输出统一 1080×1350（与人像库一致） ----------
+let fcQ=[],fcImg=null,fcOX=0,fcOY=0,fcMode='cover';
+function fcOpen(files){fcQ=files.slice();$('#fc').hidden=false;document.body.style.overflow='hidden';fcNext()}
+function fcClose(){$('#fc').hidden=true;fcQ=[];fcImg=null;document.body.style.overflow=''}
+function fcNext(){fcOX=0;fcOY=0;fcMode='cover';$('#fcZoom').value=1;$('#fcName').value='';FATTR={sex:'女',age:'年轻',hair:'短发',color:'黑色',extra:[]};fcChipsDraw();$('#fcQ').textContent=fcQ.length>1?`队列中还有 ${fcQ.length-1} 张待裁切`:'';
+ if(!fcQ.length){fcClose();toast('面孔已添加，可在人像库和试穿里使用');return}
+ const f=fcQ[0],u=URL.createObjectURL(f),i=new Image();
+ i.onload=()=>{URL.revokeObjectURL(u);fcImg=i;fcDraw()};
+ i.onerror=()=>{URL.revokeObjectURL(u);toast('有一张图片读取失败');fcQ.shift();fcNext()};
+ i.src=u}
+$('#fcDetect').onclick=fcDetectHair;
+$('#fc').addEventListener('click',e=>{const b=e.target.closest('[data-fg]');if(!b)return;const g=b.dataset.fg,v=b.dataset.v;
+ if(g=='extra'){const i=FATTR.extra.indexOf(v);i>=0?FATTR.extra.splice(i,1):FATTR.extra.push(v)}else FATTR[g]=v;
+ fcChipsDraw()});
+function fcBase(){return fcMode=='cover'?Math.max(1080/fcImg.naturalWidth,1350/fcImg.naturalHeight):Math.min(1080/fcImg.naturalWidth,1350/fcImg.naturalHeight)}
+function fcDraw(){if(!fcImg)return;const c=$('#fcCv'),x=c.getContext('2d');x.fillStyle='#dcdcdc';x.fillRect(0,0,1080,1350);const s=fcBase()*+$('#fcZoom').value,w=fcImg.naturalWidth*s,h=fcImg.naturalHeight*s;x.drawImage(fcImg,540-w/2+fcOX,675-h/2+fcOY,w,h);fcDetectHair()}
+// 人物描述：特征标签 + 发色自动识别
+const FGRP={sex:['女','男'],age:['年轻','中年'],hair:['短发','中长发','长发','卷发','马尾'],color:['黑色','深棕','棕色','金黄色','浅色'],extra:['眼镜','刘海']};
+const FEN={sex:{女:'young woman',男:'young man'},age:{年轻:'young',中年:'middle-aged'},hair:{短发:'short hair',中长发:'medium-length hair',长发:'long hair',卷发:'curly hair',马尾:'ponytail'},color:{黑色:'black',深棕:'dark brown',棕色:'brown',金黄色:'golden blond',浅色:'light-colored'},extra:{眼镜:'wearing glasses',刘海:'with bangs'}};
+let FATTR={sex:'女',age:'年轻',hair:'短发',color:'黑色',extra:[]};
+function fcChipsDraw(){for(const g in FGRP){const el=$('#fc'+g[0].toUpperCase()+g.slice(1));el.innerHTML=FGRP[g].map(v=>`<button class="chip ${FATTR[g]==v||(g=='extra'&&FATTR.extra.includes(v))?'on':''}" data-fg="${g}" data-v="${v}">${v}</button>`).join('')}
+ const ex=FATTR.extra.length?'，'+FATTR.extra.join('、'):'';
+ $('#fcDesc').textContent=`将保存描述 → 一位${FATTR.age!='年轻'?FATTR.age:''}${FATTR.sex=='女'?'女性':'男性'}，${FATTR.color}${FATTR.hair}${ex}`}
+function fcDescText(){const ex=FATTR.extra.filter(x=>x!='刘海').map(x=>FEN.extra[x]).join(' and ');
+ const zhx=FATTR.sex=='女'?'女性':'男性';
+ return{zh:`一位${FATTR.age!='年轻'?FATTR.age:''}${zhx}，${FATTR.color}${FATTR.hair}${FATTR.extra.length?'，'+FATTR.extra.join('、'):''}。保持这张脸的长相与发型，作为人物一致性参考。`,
+  en:`${FATTR.color=='浅色'?'light-colored':FEN.color[FATTR.color]} ${FEN.hair[FATTR.hair]} ${FEN.sex[FATTR.sex]}${FATTR.age=='中年'?' (middle-aged)':''}${ex?', '+ex:''}, consistent facial features, same face across images, face reference`}}
+function fcDetectHair(){if(!fcImg)return;try{const c=$('#fcCv'),x=c.getContext('2d');
+ const d=x.getImageData(Math.round(c.width*.35),Math.round(c.height*.06),Math.round(c.width*.3),Math.round(c.height*.16)).data;
+ let r=0,g=0,b=0,n=0;for(let i=0;i<d.length;i+=16){r+=d[i];g+=d[i+1];b+=d[i+2];n++}
+ r/=n;g/=n;b/=n;const lum=.299*r+.587*g+.114*b,sat=Math.max(r,g,b)-Math.min(r,g,b);
+ FATTR.color=lum<70?'黑色':lum<110?(r>b+14?'深棕':'黑色'):lum<150?(r>b+20?'棕色':'深棕'):(r>g+16&&g>b?'金黄色':'浅色');
+ fcChipsDraw()}catch(e){}}
+function fcClamp(){if(!fcImg)return;const s=fcBase()*+$('#fcZoom').value,w=fcImg.naturalWidth*s,h=fcImg.naturalHeight*s,mx=Math.max(0,(w-1080)/2),my=Math.max(0,(h-1350)/2);fcOX=Math.max(-mx,Math.min(mx,fcOX));fcOY=Math.max(-my,Math.min(my,fcOY))}
+async function fcSave(blob,w,h,desc,name){faceN++;SV('faceN',faceN);
+ const rec={id:'u'+Date.now().toString(36)+faceN,name:(name&&name.trim())||('我的面孔 '+faceN),zh:desc.zh,en:desc.en,blob,w,h};
+ await ftx('readwrite',st=>st.put(rec));FACES.push(rec);
+ if(DATA.portrait){const it=faceItem(rec);ITEMS[it.k]=it;DATA.portrait.unshift(it)}
+ counts();if(st.tab=='portrait')viewT(apply)}
+function fcDone(){fcQ.shift();if(fcQ.length)return fcNext();fcClose();toast('面孔已添加，可在人像库和试穿里使用')}
+async function renameFace(it,nn){it.ti=nn;const rec=FACES.find(r=>r.id==it.id);
+ if(rec){rec.name=nn;try{await ftx('readwrite',s=>s.put(rec))}catch(e){return toast('重命名失败')}}
+ refreshCard(it.k);if(!$('#lb').hidden)lbDraw();toast('已重命名为「'+nn+'」')}
+async function delFace(it){
+ if(it.u){try{await ftx('readwrite',s=>s.delete(it.id))}catch(e){}const i=FACES.findIndex(r=>r.id==it.id);if(i>=0)FACES.splice(i,1)}else{HIDF.add(it.k);SV('hideF',[...HIDF])}
+ if(DATA.portrait){const i=DATA.portrait.findIndex(x=>x.k==it.k);if(i>=0)DATA.portrait.splice(i,1)}delete ITEMS[it.k];
+ if(st.fav.has(it.k)){st.fav.delete(it.k);SV('fav',[...st.fav])}if(st.rec.includes(it.k)){st.rec=st.rec.filter(x=>x!=it.k);SV('rec',st.rec)}
+ counts();if(!$('#lb').hidden)lbClose();if(st.tab=='portrait')dropCard(it.k);toast(it.u?'已删除此面孔':'已从人像库隐藏此面孔')}
+function load(t){return LOAD[t]||(LOAD[t]=fetch({pose:'poses.json',costume:'costumes.json',portrait:'portraits.json'}[t]).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(a=>{a.forEach((it,i)=>{it.type=t;it.k=PFX[t]+it.id;it.ord=i;if(t=='pose')it.ai=st.ang[it.k]||0;ITEMS[it.k]=it});DATA[t]=a;if(t=='portrait'){mergeFaces();pruneFaces()}counts();return a}).catch(e=>{delete LOAD[t];throw e}))}
 const needKeys=ks=>Promise.all([...new Set(ks.map(k=>KT[k[0]]).filter(Boolean))].map(load));
 const thumb=it=>it.type=='pose'?it.angles[it.ai].t:it.t,big=it=>it.type=='pose'?it.angles[it.ai].i:(innerWidth*(devicePixelRatio||1)>1500?it.i:it.m);
 const orig=it=>'/'+(it.type=='pose'?it.angles[it.ai].o:it.o);
@@ -47,7 +103,7 @@ function card(it,d){const isS=st.sel.includes(it.k),isF=st.fav.has(it.k),P=it.ty
  const tags=P?[[it.line,''],[it.cat,'c']]:it.type=='portrait'?[[it.sec,'c'],[it.len,'']]:[[it.cat,'c'],...val(it,'item').slice(0,3).map(x=>[x,''])];
  return `<article class="card ${isS?'sel':''}" data-k="${it.k}" style="animation-delay:${d||0}ms"><div class="ph ${P?'pose':'cos'}" data-a="open"><img loading="lazy" decoding="async" src="${thumb(it)}" alt="${esc(t)}" width="${P?300:it.type=='portrait'?400:360}" height="${P?400:it.type=='portrait'?500:540}" draggable="false"><button class="phk" data-a="open" aria-label="${esc(t)}"></button>
  ${it.rk?`<span class="badge rk">TOP ${it.rk}</span>`:''}${P?`<span class="badge">${it.no}</span><div class="angs">${it.angles.map((a,i)=>`<span data-a="ang" data-i="${i}" class="${i==it.ai?'on':''}">${a.zh}</span>`).join('')}</div>`:''}
- ${st.tab=='recent'?'<button data-a="unrec" class="unrec" title="从记录中移除" aria-label="从记录中移除">✕</button>':''}<div class="cbtns"><button data-a="fav" class="${isF?'on':''}" title="${isF?'取消收藏':'收藏'}" aria-label="收藏" aria-pressed="${isF}">${isF?'♥':'♡'}</button><button data-a="sel" class="${isS?'on':''}" title="${isS?'移出组合':'加入组合'}" aria-label="加入组合" aria-pressed="${isS}">${isS?'✓':'＋'}</button></div><button class="try" data-a="try">${P?'用作姿势参考':it.type=='portrait'?'用作人物参考':'试穿这套'}</button></div>
+ ${st.tab=='recent'?'<button data-a="unrec" class="unrec" title="从记录中移除" aria-label="从记录中移除">✕</button>':it.type=='portrait'?'<button data-a="delf" class="unrec" title="从人像库移除" aria-label="从人像库移除">✕</button>':''}<div class="cbtns"><button data-a="fav" class="${isF?'on':''}" title="${isF?'取消收藏':'收藏'}" aria-label="收藏" aria-pressed="${isF}">${isF?'♥':'♡'}</button><button data-a="sel" class="${isS?'on':''}" title="${isS?'移出组合':'加入组合'}" aria-label="加入组合" aria-pressed="${isS}">${isS?'✓':'＋'}</button></div><button class="try" data-a="try">${P?'用作姿势参考':it.type=='portrait'?'用作人物参考':'试穿这套'}</button></div>
  <div class="info"><h3 title="${esc(t)}">${esc(t)}</h3><div class="sub">${esc(subtitle(it))}</div><div class="tags">${tags.map(([x,c])=>`<span class="tag ${c}">${esc(x)}</span>`).join('')}</div>
  <div class="copy"><button data-a="cpzh">复制中文</button><button data-a="cpen">复制英文</button></div></div></article>`}
 function grp(k){const t=st.recT[k];if(!t)return'更早';const d=new Date();d.setHours(0,0,0,0);return t>=d?'今天':t>=d-864e5?'昨天':t>=d-6*864e5?'近 7 天':'更早'}
@@ -75,7 +131,7 @@ $('#trayMin').onclick=()=>{const m=$('#tray').classList.toggle('min');$('#trayMi
 $('#trayClear').onclick=()=>{const s=st.sel;st.sel=[];SV('sel',[]);s.forEach(refreshCard);tray();toast('已清空组合')};
 grid.onclick=e=>{const a=e.target.closest('[data-a]');if(!a)return;const c=e.target.closest('.card'),k=c.dataset.k,it=ITEMS[k];e.stopPropagation();
  const ph=c.querySelector('.ph');if(a.dataset.a=='open'&&ph.classList.contains('err')){const im=ph.querySelector('img');ph.classList.remove('err','done');im.src=thumb(it)+'?r='+Date.now();return}
- ({open:()=>lbOpen(st.list.indexOf(it),c),fav:()=>toggleFav(k),unrec:()=>unRec(k),sel:()=>toggleSel(k),cpen:()=>copy(prompt(it,'en'),'英文提示词'),cpzh:()=>copy(prompt(it,'zh'),'中文描述'),try:()=>window.WB&&WB.pick(it),ang:()=>setAng(it,+a.dataset.i)})[a.dataset.a]()};
+  ({open:()=>lbOpen(st.list.indexOf(it),c),fav:()=>toggleFav(k),unrec:()=>unRec(k),delf:()=>delFace(it),sel:()=>toggleSel(k),cpen:()=>copy(prompt(it,'en'),'英文提示词'),cpzh:()=>copy(prompt(it,'zh'),'中文描述'),try:()=>window.WB&&WB.pick(it),ang:()=>setAng(it,+a.dataset.i)})[a.dataset.a]()};
 function viewT(fn){if(document.startViewTransition&&!RM){try{const v=document.startViewTransition(fn);v.ready.catch(()=>{});v.finished.catch(()=>{});return v.updateCallbackDone.catch(()=>{})}catch(e){}}fn();grid.classList.add('fade');requestAnimationFrame(()=>requestAnimationFrame(()=>grid.classList.remove('fade')));return Promise.resolve()}
 function drawer(o){$('#filters').classList.toggle('open',o);$('#fBtn').classList.toggle('on',o)}
 $('#fBtn').onclick=()=>drawer(!$('#filters').classList.contains('open'));$('#drawerBg').onclick=()=>drawer(false);
@@ -92,7 +148,7 @@ function setLang(l,quiet){st.lang=l;SV('lang',l);document.documentElement.datase
 $$('button[data-lang]').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
 // 标签页
 function moveInd(){const b=$('.tabs button.on'),ind=$('.ind');if(!b)return;ind.style.width=b.offsetWidth+'px';ind.style.transform=`translateX(${b.offsetLeft}px)`}
-async function setTab(t,openId){$('#porNote').hidden=t!='portrait';if(t=='studio'){st.tab=t;$$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();document.title='试穿 · 衣姿 PoseWear';history.replaceState(null,'','#studio');document.body.classList.add('studio');$('#studio').hidden=false;$('#tray').hidden=true;scrollTo({top:0});window.WB&&WB.show();return}
+async function setTab(t,openId){$('#porNote').hidden=t!='portrait';$('#addFace').hidden=t!='portrait';if(t=='studio'){st.tab=t;$('#addFace').hidden=true;$$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();document.title='试穿 · 衣姿 PoseWear';history.replaceState(null,'','#studio');document.body.classList.add('studio');$('#studio').hidden=false;$('#tray').hidden=true;scrollTo({top:0});window.WB&&WB.show();return}
  if(document.body.classList.contains('studio')){document.body.classList.remove('studio');$('#studio').hidden=true;tray()}
  const changed=st.tab!=t;st.tab=t;if(changed)grid.classList.add('gbusy');st.f={};st.q='';$('#q').value='';$('#qx').hidden=true;
  $$('.tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.tab==t);b.setAttribute('aria-selected',b.dataset.tab==t)});moveInd();
@@ -116,6 +172,44 @@ $('#exp').onclick=()=>{if(!st.fav.size)return toast('还没有收藏可导出');
  const b=new Blob([JSON.stringify({app:'衣姿 PoseWear',导出时间:new Date().toLocaleString('zh-CN'),收藏:items},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='衣姿-收藏-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('已导出 '+items.length+' 条收藏')};
 $('#imp').onclick=()=>$('#impF').click();$('#impF').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());const ks=(j.收藏||[]).map(x=>x.key).filter(k=>/^[pcr]:/.test(k));await needKeys(ks);let n=0;ks.forEach(k=>{if(ITEMS[k]&&!st.fav.has(k)){st.fav.add(k);n++}});SV('fav',[...st.fav]);counts();setTab('fav');toast('已导入 '+n+' 条收藏')}catch(err){toast('导入失败：文件格式不正确')}e.target.value=''};
 $('#clrRec').onclick=()=>{if(!st.rec.length)return;const old=st.rec.slice();st.rec=[];SV('rec',[]);counts();viewT(apply);toast(`已清空 ${old.length} 条记录`,()=>{st.rec=old;SV('rec',old);counts();viewT(apply)})};
+$('#addFace').onclick=()=>$('#faceF').click();$('#faceF').onchange=e=>{addFaceFiles(e.target.files);e.target.value=''};
+// 裁切器交互
+$('#fcCover').onclick=()=>{fcMode='cover';$('#fcZoom').value=1;fcOX=0;fcOY=0;fcDraw()};
+$('#fcContain').onclick=()=>{fcMode='contain';$('#fcZoom').value=1;fcOX=0;fcOY=0;fcDraw()};
+$('#fcZoom').oninput=()=>{fcClamp();fcDraw()};
+$('#fcOk').onclick=async()=>{if(!fcImg)return;const c=$('#fcCv');
+ try{if($('#fcBg').checked)fcKeyBg(c)}catch(e){}
+ const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));if(!blob)return toast('裁切失败，请重试');
+ try{await fcSave(blob,1080,1350,fcDescText(),$('#fcName').value)}catch(e){return toast('保存失败，请重试')}fcDone()};
+// 统一背景：采样四角背景色做去底，换成与人像库一致的浅色棚拍背景（竖向微渐变）；背景不均匀则跳过
+function fcKeyBg(cv){const W=cv.width,H=cv.height,x=cv.getContext('2d');
+ const im=x.getImageData(0,0,W,H),d=im.data,B=24,cs=[[0,0],[W-B,0],[0,H-B],[W-B,H-B]];
+ let r=0,g=0,b=0,n=0,va=0;const px=[];
+ for(const[cx,cy] of cs)for(let y=cy;y<cy+B;y++)for(let xx=cx;xx<cx+B;xx++)px.push((y*W+xx)*4);
+ for(const i of px){r+=d[i];g+=d[i+1];b+=d[i+2];n++}
+ r/=n;g/=n;b/=n;
+ for(const i of px)va+=Math.abs(d[i]-r)+Math.abs(d[i+1]-g)+Math.abs(d[i+2]-b);
+ va/=n;const th=Math.max(40,Math.min(105,va*2.4));
+ // 四角颜色彼此差异过大说明背景不均匀，放弃处理
+ for(let a=0;a<px.length;a++)for(let c2=a+1;c2<px.length;c2++){const i=px[a],j=px[c2];if(Math.abs(d[i]-d[j])+Math.abs(d[i+1]-d[j+1])+Math.abs(d[i+2]-d[j+2])>110)return}
+ for(let y=0;y<H;y++){const t=y/H,bgc=[244-t*18,246-t*16,242-t*14];
+  for(let xx=0;xx<W;xx++){const i=(y*W+xx)*4;
+   const dist=Math.abs(d[i]-r)+Math.abs(d[i+1]-g)+Math.abs(d[i+2]-b);
+   let a;if(dist<=th)a=0;else if(dist>=th*1.9)a=1;else a=(dist-th)/(th*0.9);
+   const k=a*a*(3-2*a);
+   d[i]=Math.round(d[i]*k+bgc[0]*(1-k));d[i+1]=Math.round(d[i+1]*k+bgc[1]*(1-k));d[i+2]=Math.round(d[i+2]*k+bgc[2]*(1-k));d[i+3]=255}}
+ x.putImageData(im,0,0)}
+$('#fcSkip').onclick=async()=>{const f=fcQ[0];if(!f)return;try{
+  const img=await new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=URL.createObjectURL(f)});
+  const c=document.createElement('canvas'),s=Math.min(1,1080/Math.max(img.naturalWidth,img.naturalHeight));c.width=Math.round(img.naturalWidth*s/2)*2;c.height=Math.round(img.naturalHeight*s/2)*2;c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));await fcSave(blob,c.width,c.height,fcDescText(),$('#fcName').value)}catch(e){toast('这张图片读取失败')}
+  fcDone()};
+$('#fcX').onclick=fcClose;$('#fc').onclick=e=>{if(e.target.id=='fc')fcClose()};
+{const cv=$('#fcCv');let dg=null;
+ cv.addEventListener('pointerdown',e=>{dg={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId)});
+ cv.addEventListener('pointermove',e=>{if(!dg||!fcImg)return;const k=1080/cv.getBoundingClientRect().width;fcOX+=(e.clientX-dg.x)*k;fcOY+=(e.clientY-dg.y)*k;dg={x:e.clientX,y:e.clientY};fcClamp();fcDraw()});
+ cv.addEventListener('pointerup',()=>dg=null);cv.addEventListener('pointercancel',()=>dg=null);
+ cv.addEventListener('wheel',e=>{e.preventDefault();const z=$('#fcZoom');z.value=Math.max(1,Math.min(3,+z.value*(e.deltaY<0?1.1:0.9)));fcClamp();fcDraw()},{passive:false})}
 $('#clrFav').onclick=()=>{if(!st.fav.size)return toast('还没有收藏');const old=[...st.fav];st.fav=new Set();SV('fav',[]);counts();viewT(apply);toast(`已清空 ${old.length} 条收藏`,()=>{st.fav=new Set(old);SV('fav',old);counts();viewT(apply)})};
 document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){history.pushState(null,'','#'+b.dataset.go);setTab(b.dataset.go)}});
 $('#introX').onclick=()=>{localStorage.introX=1;const el=$('#intro');RM?document.documentElement.classList.add('nointro'):el.animate([{opacity:1,height:el.offsetHeight+'px'},{opacity:0,height:0,paddingTop:0,paddingBottom:0,marginBottom:0}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'}).finished.then(()=>document.documentElement.classList.add('nointro'))};
@@ -140,15 +234,21 @@ function lbDraw(){const it=st.list[li];if(!it)return;const img=$('#lbImg'),box=$
  const zh=`<div class="pbox"><small>中文描述</small><p>${esc(prompt(it,'zh'))}</p><button class="sm pri" data-c="zh">复制中文</button></div>`,en=`<div class="pbox en"><small>英文提示词 · PROMPT</small><p>${esc(prompt(it,'en'))}</p><button class="sm" data-c="en">复制英文</button></div>`;
  $('#lbSide').innerHTML=`<div class="mu">${TNAME[['fav','recent'].includes(st.tab)?st.tab:it.type]} · 第 ${li+1} / ${st.list.length} 项</div><h2>${esc(title(it))}</h2><div class="mu">${esc(P?it.line+' · '+it.cat+' · 编号 '+it.no:it.type=='portrait'?it.sec+' · '+it.len+' · 编号 '+it.no+(it.rk?' · 人气第 '+it.rk+' 名':''):it.cat+' · 编号 '+it.id)}</div>
  ${P?`<div class="jp">日文原名：${esc(it.ja)}</div><div class="angsel" role="group" aria-label="拍摄角度">${it.angles.map((a,i)=>`<button class="chip ${i==it.ai?'on':''}" data-ai="${i}">${a.zh}</button>`).join('')}</div>`:''}
- ${st.lang=='en'?en+zh:zh+en}${P?'':it.type=='portrait'?`<div class="jp">日文原名：${esc(it.ja)}　·　CC0 1.0，AI 生成的虚构人物，请勿用于冒充真人</div>`:`<div class="jp">原始关键词：${esc(it.kw)}</div>`}
+ ${st.lang=='en'?en+zh:zh+en}${P?'':it.type=='portrait'?it.u?`<div class="jp">自定义面孔　<button class="sm" data-x="ren">✎ 重命名</button>　<button class="sm" data-x="edes">✎ 编辑描述</button></div><div id="lbEd" hidden><label class="fld">名称<input id="edName" value="${esc(it.ti)}" spellcheck="false"></label><label class="fld">中文描述<textarea id="edZh" rows="3" spellcheck="false">${esc(it.zh)}</textarea></label><label class="fld">英文提示词<textarea id="edEn" rows="3" spellcheck="false">${esc(it.en)}</textarea></label><div class="row"><button class="sm pri" data-x="edsave">保存修改</button><button class="sm ghost" data-x="edcancel">取消</button></div></div>`:`<div class="jp">日文原名：${esc(it.ja)}　·　CC0 1.0，AI 生成的虚构人物，请勿用于冒充真人</div>`:`<div class="jp">原始关键词：${esc(it.kw)}</div>`}
  <div class="mact"><button data-x="fav" class="${isF?'on':''}" aria-label="${isF?'取消收藏':'收藏'}">${isF?'♥':'♡'}</button><button data-x="share">分享</button><button data-x="try" class="pri">${P?'用作姿势参考':it.type=='portrait'?'用作人物参考':'试穿这套'}</button></div> <div class="acts"><button data-x="fav">${isF?'♥ 已收藏':'♡ 收藏'}</button><button data-x="sel" class="${isS?'':'pri'}">${isS?'✓ 已在组合中':'＋ 加入组合'}</button><button data-x="try">${P?'用作姿势参考':it.type=='portrait'?'用作人物参考':'试穿这套'}</button><button data-x="share">分享链接</button><button data-x="dlx">下载图片</button><button data-x="cpimg">复制图片</button><a href="${orig(it)}" download="posewear-${it.type}-${it.id}${P?'-'+it.ai:''}.png" class="dl"><button tabindex="-1">下载原图 PNG</button></a>${P||it.type=='portrait'?'':`<a href="https://s.taobao.com/search?q=${encodeURIComponent([...val(it,'col').slice(0,1),...val(it,'item').slice(0,2)].join(' ')||'女装 '+it.cat)}" target="_blank" rel="noopener" class="dl"><button tabindex="-1">淘宝搜同款 ↗</button></a>`}</div>
 <div id="lbSim"></div><p class="mu" style="margin-top:22px;line-height:2.1"><kbd>←</kbd><kbd>→</kbd>切换　${P?'<kbd>↑</kbd><kbd>↓</kbd>角度　':''}<kbd>F</kbd>收藏　<kbd>A</kbd>组合　<kbd>C</kbd>复制　<kbd>S</kbd>分享</p>`;window.X&&X.lb(it)}
 const share=()=>copy(location.href,'分享链接');
-$('#lbSide').onclick=e=>{const it=st.list[li],t=e.target.closest('button');if(!t)return;if(t.dataset.ai){setAng(it,+t.dataset.ai);lbDraw()}if(t.dataset.c)copy(prompt(it,t.dataset.c),t.dataset.c=='en'?'英文提示词':'中文描述');if(t.dataset.x=='fav')toggleFav(it.k);if(t.dataset.x=='sel')toggleSel(it.k);if(t.dataset.x=='share')share();if(t.dataset.x=='try'){lbClose();window.WB&&WB.pick(it)}};
+$('#lbSide').onclick=e=>{const it=st.list[li],t=e.target.closest('button');if(!t)return;if(t.dataset.ai){setAng(it,+t.dataset.ai);lbDraw()}if(t.dataset.c)copy(prompt(it,t.dataset.c),t.dataset.c=='en'?'英文提示词':'中文描述');
+ if(t.dataset.x=='ren'||t.dataset.x=='edes'){const ed=$('#lbEd');if(ed){ed.hidden=false;const nm=$('#edName');nm&&nm.focus()}}
+ if(t.dataset.x=='edsave'){const nn=$('#edName').value.trim(),zz=$('#edZh').value.trim(),ee=$('#edEn').value.trim();
+  if(!nn)return toast('名称不能为空');it.ti=nn;it.zh=zz;it.en=ee;const rec=FACES.find(r=>r.id==it.id);
+  if(rec){rec.name=nn;rec.zh=zz;rec.en=ee;ftx('readwrite',s=>s.put(rec)).catch(()=>{})}
+  refreshCard(it.k);lbDraw();toast('已保存修改')}
+ if(t.dataset.x=='fav')toggleFav(it.k);if(t.dataset.x=='sel')toggleSel(it.k);if(t.dataset.x=='share')share();if(t.dataset.x=='try'){lbClose();window.WB&&WB.pick(it)}};
 const step=d=>{li=(li+d+st.list.length)%st.list.length;lbDraw();if(!RM)$('#lbImg').animate([{opacity:.3,transform:`translateX(${d*30}px)`},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'})};
 $('.lb-bg').onclick=lbClose;$('.lb-x').onclick=lbClose;$('.prev').onclick=()=>step(-1);$('.next').onclick=()=>step(1);
 addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const ae=document.activeElement,inp=ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName);
- if(e.key=='Escape'){if(!$('#ageBox').hidden)return $('#ageBox').hidden=true;if(!$('#privBox').hidden)return $('#privBox').hidden=true;if(!$('#helpBox').hidden)return $('#helpBox').hidden=true;if(!$('#lb').hidden)return lbClose();drawer(false);if(inp)ae.blur();return}if(inp)return;
+ if(e.key=='Escape'){if(!$('#fc').hidden)return fcClose();if(!$('#ageBox').hidden)return $('#ageBox').hidden=true;if(!$('#privBox').hidden)return $('#privBox').hidden=true;if(!$('#helpBox').hidden)return $('#helpBox').hidden=true;if(!$('#lb').hidden)return lbClose();drawer(false);if(inp)ae.blur();return}if(inp)return;
  if(e.key=='?'){$('#helpBox').hidden=!$('#helpBox').hidden;return}const k=e.key.toLowerCase();
  if($('#lb').hidden){if(e.key=='/'){e.preventDefault();$('#q').focus()}else if(k=='r'&&st.tab!='studio'&&!$('#rand').hidden)randPick();else if(k=='t')theme();else if(k=='l')setLang(st.lang=='zh'?'en':'zh');else if('123456'.includes(e.key))setTab(TABS[e.key-1]);return}
  const it=st.list[li];if(e.key=='ArrowLeft')step(-1);else if(e.key=='ArrowRight')step(1);
@@ -171,7 +271,7 @@ $('#ageN').onclick=$('#ageBox').onclick=e=>{if(e.target.id!='ageN'&&e.target.id!
 document.addEventListener('click',e=>{const b=e.target.closest('[data-age]');if(!b)return;st.adult?(ageSet(false),toast('已隐藏成人内容')):ageAsk()});
 $('#privO').onclick=e=>{e.preventDefault();$('#privBox').hidden=false};$('#privBox').onclick=e=>{if(e.target.id=='privBox'||e.target.dataset.close!=null)$('#privBox').hidden=true};
 addEventListener('hashchange',()=>{const id=location.hash.split('/')[1];if(!$('#lb').hidden){if(id)return;lbPushed=false;lbClose();setTimeout(route,closing?280:0);return}route()});
-if(innerWidth<=760)$('#q').placeholder='搜索';setLang(st.lang,true);ageSet(st.adult);hdr();countUp();needKeys([...st.sel]).then(()=>tray()).catch(()=>{});st.tab='';if(Q0&&!location.hash)history.replaceState(null,'','?q='+encodeURIComponent(Q0)+'#'+(TABS.includes(QT)?QT:'costume'));route();
+if(innerWidth<=760)$('#q').placeholder='搜索';setLang(st.lang,true);ageSet(st.adult);hdr();countUp();needKeys([...st.sel]).then(()=>tray()).catch(()=>{});(async()=>{try{FACES.push(...await ftx('readonly',s=>s.getAll()));mergeFaces()}catch(e){}})();st.tab='';if(Q0&&!location.hash)history.replaceState(null,'','?q='+encodeURIComponent(Q0)+'#'+(TABS.includes(QT)?QT:'costume'));route();
 if('serviceWorker'in navigator&&location.protocol!='file:')addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 
 window.APP={ok,ageAsk,toggleFav,toggleSel,lbOpen,lbClose,apply,li:()=>li,load,ITEMS,DATA,thumb,big,title,prompt,toast,esc,setTab,st,copy};
