@@ -214,7 +214,7 @@ idx=re.sub(r'<meta name="description" content="[^"]*">',f'<meta name="descriptio
 idx=re.sub(r'<meta property="og:title" content="[^"]*">','<meta property="og:title" content="衣姿 PoseWear：姿势、服装、人像参考图库">',idx,1)
 idx=re.sub(r'<meta property="og:description" content="[^"]*">',f'<meta property="og:description" content="{E(zh_desc)}">',idx,1)
 idx=idx.replace('<meta name="twitter:card" content="summary_large_image">',f'<meta name="twitter:card" content="summary_large_image"><meta name="twitter:description" content="{E(zh_desc)}">',1)
-idx=idx.replace('<link rel="canonical" href="https://posewear.pages.dev/">','<link rel="canonical" href="https://posewear.pages.dev/">'+alts('/'))
+idx=idx.replace('<link rel="canonical" href="https://posewear.pages.dev/">',alts('/'))
 LD=[{"@type":"WebSite","@id":SITE+'/#website',"url":SITE+'/',"name":"衣姿 PoseWear","alternateName":["PoseWear","衣姿"],"inLanguage":"zh-CN","description":zh_desc,
   "potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":SITE+'/?t=costume&q={search_term_string}'},"query-input":"required name=search_term_string"}},
  {"@type":"WebApplication","name":"衣姿 PoseWear","url":SITE+'/',"applicationCategory":"DesignApplication","operatingSystem":"Any (web browser)","browserRequirements":"Requires JavaScript","inLanguage":["zh-CN","en"],
@@ -230,6 +230,7 @@ g=re.search(r'(<main id="grid"[^>]*>)(.*?)(</main>)',idx,re.S)
 idx=idx[:g.start(2)]+''.join(ssr(p) for p in SP[:12])+idx[g.end(2):]
 nav='<nav class="seoc" aria-label="分类浏览"><div><h4>姿势分类</h4>'+''.join(f'<a href="/pose/{s}/">{z}</a>' for s,z,e,L in CATS['pose'])+'</div><div><h4>服装分类</h4>'+''.join(f'<a href="/costume/{s}/">{z}</a>' for s,z,e,L in CATS['costume'])+'<a href="/tag/">按单品和颜色</a></div><div><h4>人像</h4>'+''.join(f'<a href="/portrait/{s}/">{z}</a>' for s,z,e,L in CATS['portrait'])+'</div><div><h4>其他</h4><a href="/pose/">姿势图库</a><a href="/costume/">服装图库</a><a href="/portrait/">人像图库</a><a href="/en/" hreflang="en" lang="en">English</a></div></nav>'
 idx=idx.replace('<footer class="foot">',nav+'<footer class="foot">',1)
+idx=idx.replace('https://posewear.pages.dev',SITE)  # 首页 og:url/canonical 等统一指向实际部署域名
 open(f'{D}/index.html','w').write(idx)
 # ---- 站点地图 ----
 def smx(L,img=True):
